@@ -59,6 +59,10 @@ public class IORequest {
         return folder;
     }
     
+    public User getOwner() {
+        return owner;
+    }
+    
     public boolean isContentAFile() {
         return isFile;
     }
