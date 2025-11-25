@@ -23,7 +23,14 @@ public class Buffer {
         this.maxSize = maxSize;
     }
     
-    public Block checkBuffer(int dir) {
+    public boolean checkBuffer(int dir) {
+        if (buffer.getValueOfKey(dir)==null) {
+            return false;
+        }
+        return true;
+    }
+    
+    public Block getFromBuffer(int dir) {
         return buffer.getValueOfKey(dir);
     }
     

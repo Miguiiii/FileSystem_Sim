@@ -18,6 +18,9 @@ public class Process {
     private boolean isFile = false;
     private boolean requestCompleted = false;
     private User owner;
+    
+    private String newName;
+    private Folder newParent;
 
     public Process(CRUD crud, DiskElement file, User owner) {
         this.crud = crud;
@@ -79,6 +82,22 @@ public class Process {
     
     public boolean isRequestCompleted() {
         return requestCompleted;
+    }
+    
+    public String getNewName() {
+        return newName;
+    }
+
+    public void setNewName(String newName) {
+        this.newName = newName;
+    }
+
+    public Folder getNewParent() {
+        return newParent;
+    }
+
+    public void setNewParent(Folder newParent) {
+        this.newParent = newParent;
     }
     
 }

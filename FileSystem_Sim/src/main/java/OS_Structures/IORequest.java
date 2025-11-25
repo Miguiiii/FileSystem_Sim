@@ -18,6 +18,9 @@ public class IORequest {
     private User owner;
     private boolean isFile = false;
     private long arrival;
+    
+    private String newName;
+    private Folder newParent;
 
     public IORequest(int id, DiskElement file, CRUD type, User owner, long dateCreated) {
         this.id = id;
@@ -71,6 +74,22 @@ public class IORequest {
     
     public boolean isContentAFile() {
         return isFile;
+    }
+
+    public String getNewName() {
+        return newName;
+    }
+
+    public void setNewName(String newName) {
+        this.newName = newName;
+    }
+
+    public Folder getNewParent() {
+        return newParent;
+    }
+
+    public void setNewParent(Folder newParent) {
+        this.newParent = newParent;
     }
     
 }
