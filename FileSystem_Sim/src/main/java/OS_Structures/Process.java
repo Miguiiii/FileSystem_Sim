@@ -14,12 +14,20 @@ public class Process {
     private CRUD crud;
     private Status status;
     private File file;
+    private Folder folder = null;
+    private boolean isFile = false;
     private boolean requestCompleted = false;
     private User owner;
 
-    public Process(CRUD crud, File file, User owner) {
+    public Process(CRUD crud, DiskElement file, User owner) {
         this.crud = crud;
-        this.file = file;
+        if (file instanceof File) {
+            this.file = (File) file;
+            this.isFile = true;
+        }
+        if (file instanceof Folder) {
+            this.folder = (Folder) file;
+        }
         this.status = status.NEW;
         this.owner = owner;
     }
@@ -34,6 +42,21 @@ public class Process {
 
     public File getFile() {
         return file;
+    }
+    
+    public Folder getFolder() {
+        return folder;
+    }
+    
+    public boolean isContentAFile() {
+        return isFile;
+    }
+    
+    public DiskElement getElement() {
+        if (isFile) {
+            return file;
+        }
+        return folder;
     }
     
     public Process setStatus(Status status) {

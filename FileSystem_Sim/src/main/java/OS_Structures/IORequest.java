@@ -14,12 +14,29 @@ public class IORequest {
     private int headDir;
     private CRUD type;
     private File file;
+    private Folder folder = null;
+    private User owner;
+    private boolean isFile = false;
 
-    public IORequest(int id, File file, CRUD type, long dateCreated) {
+    public IORequest(int id, DiskElement file, CRUD type, User owner, long dateCreated) {
         this.id = id;
-        this.file = file;
-        this.headDir = file.getFileDir();
+        if (file instanceof File) {
+            this.file = (File) file;
+            this.headDir = this.file.getFileDir();
+            this.isFile = true;
+        }
+        if (file instanceof Folder) {
+            this.folder = (Folder) file;
+        }
         this.type = type;
+        this.owner = owner;
+    }
+    
+    public DiskElement getElement() {
+        if (isFile) {
+            return file;
+        }
+        return folder;
     }
 
     public int getId() {
@@ -36,6 +53,14 @@ public class IORequest {
 
     public File getFile() {
         return file;
+    }
+    
+    public Folder getFolder() {
+        return folder;
+    }
+    
+    public boolean isContentAFile() {
+        return isFile;
     }
     
 }
