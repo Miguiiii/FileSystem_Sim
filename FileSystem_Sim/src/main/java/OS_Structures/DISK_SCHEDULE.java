@@ -10,7 +10,6 @@ package OS_Structures;
  */
 public enum DISK_SCHEDULE {
     FIFO,
-    PRIORITY,
     SHORTEST_SERVICE_TIME,
     SCAN,
     C_SCAN
