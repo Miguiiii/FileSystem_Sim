@@ -13,5 +13,4 @@ public enum DISK_SCHEDULE {
     SHORTEST_SERVICE_TIME,
     SCAN,
     C_SCAN
-
 }
