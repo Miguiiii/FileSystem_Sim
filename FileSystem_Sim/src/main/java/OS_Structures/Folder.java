@@ -13,8 +13,9 @@ public class Folder implements DiskElement {
     private String name;
     private HashMap<String, DiskElement> contents;
     private Folder parent;
+    private User owner;
 
-    public Folder(String name) {
+    public Folder(String name, User owner) {
         this.name = name;
         this.contents = new HashMap(15);
     }
@@ -44,6 +45,16 @@ public class Folder implements DiskElement {
     @Override
     public Folder getParent() {
         return parent;
+    }
+
+    @Override
+    public User getOwner() {
+        return owner;
+    }
+    
+    @Override
+    public boolean isFile() {
+        return false;
     }
     
 }
