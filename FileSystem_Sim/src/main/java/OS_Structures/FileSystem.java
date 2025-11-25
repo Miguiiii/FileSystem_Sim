@@ -14,7 +14,7 @@ import main.GUI;
  * @author Miguel
  */
 public class FileSystem {
-    private Process running;
+    private Process running = null;
     private Queue<Process> readyList;
     private Queue<Process> newsList;
     private HashMap<Integer, Process> blockedList;
@@ -40,7 +40,7 @@ public class FileSystem {
                 try {
                     runTime();
                 } catch (InterruptedException ex) {
-                    System.out.println("Error in Main File System Thread");
+                    System.getLogger(FileSystem.class.getName()).log(System.Logger.Level.ERROR, (String) null, ex);
                 }
             }
         });
@@ -48,12 +48,37 @@ public class FileSystem {
         mainThread.start();
     }
     
-    public void createProcess(File file, CRUD type, User owner) {
-        
+    public void createProcess(DiskElement file, CRUD type, User owner) {
+        try {
+            newSem.acquire();
+            newsList.enqueue(new Process(type, file, owner));
+            newSem.release();
+        } catch (InterruptedException ex) {
+            System.getLogger(FileSystem.class.getName()).log(System.Logger.Level.ERROR, (String) null, ex);
+        }
     }
     
     private void runProcess() {
-        
+        if (running.isRequestCompleted()) {
+            exit.enqueue(running.setStatus(Status.EXIT));
+            running = null;
+            return;
+        }
+        if ((running.getElement().getOwner()!=running.getOwner() && !running.getOwner().isAdmin())||(!running.getElement().isFile() && !running.getOwner().isAdmin())) {
+            System.out.println("Proceso no permitido, eliminando proceso");
+            running = null;
+            return;
+        }
+        if (running.getCrud()==CRUD.CREATE && running.getElement() instanceof File file1) {
+            if (disk.getFreeSpace()<file1.getSize()) {
+                System.out.println("Este archivo no cabe en el disco, eliminando proceso");
+                running = null;
+                return;
+            }
+        }
+        disk.addRequest(running);
+        blockedList.put(running.getId(), running.setStatus(Status.BLOCKED));
+        running = null;
     }
     
     private void runTime() throws InterruptedException {
