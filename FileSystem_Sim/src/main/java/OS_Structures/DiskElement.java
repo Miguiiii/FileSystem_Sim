@@ -11,4 +11,7 @@ package OS_Structures;
 public interface DiskElement {
     public String getName();
     public Folder getParent();
+    public void setName(String name);
+    public User getOwner();
+    public boolean isFile();
 }
