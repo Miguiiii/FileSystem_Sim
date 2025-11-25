@@ -14,6 +14,7 @@ import javax.swing.table.DefaultTableModel;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.DefaultTreeModel;
 import javax.swing.tree.TreePath;
+import OS_Structures.*;
 
 /**
  *
@@ -25,6 +26,7 @@ public class GUI extends javax.swing.JPanel {
     private DefaultTableModel tableModelFiles;
     private DefaultTableModel tableModelDiskView;
     private DefaultTableModel tableModelBuffer;
+    private Disk disk;
     public GUI() {
         initComponents();
         setupTree();
@@ -32,7 +34,7 @@ public class GUI extends javax.swing.JPanel {
     }
 
     private void setupTree() {
-        rootNode = new DefaultMutableTreeNode("Root");
+        rootNode = new DefaultMutableTreeNode(new Folder("Root", new User("Nop", true)));
         treeModel = new DefaultTreeModel(rootNode);
         jTree1.setModel(treeModel);
         updateLocationComboBox();
