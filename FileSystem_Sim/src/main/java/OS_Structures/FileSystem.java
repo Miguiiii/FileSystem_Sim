@@ -76,6 +76,11 @@ public class FileSystem {
                 return;
             }
         }
+        if ((running.getCrud()==CRUD.READ||running.getCrud()==CRUD.UPDATE) && !running.isContentAFile()) {
+            System.out.println("No se puede Leer una carpeta, eliminando proceso");
+            running = null;
+            return;
+        }
         disk.addRequest(running);
         blockedList.put(running.getId(), running.setStatus(Status.BLOCKED));
         running = null;
