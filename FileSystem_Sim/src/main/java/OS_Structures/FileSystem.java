@@ -60,9 +60,7 @@ public class FileSystem {
     
     private void runProcess() {
         if (running.isRequestCompleted()) {
-            exit.enqueue(running.setStatus(Status.EXIT));
-            running = null;
-            return;
+            exitProcess();
         }
         if ((running.getElement().getOwner()!=running.getOwner() && !running.getOwner().isAdmin())||(!running.getElement().isFile() && !running.getOwner().isAdmin())) {
             System.out.println("Proceso no permitido, eliminando proceso");
@@ -81,9 +79,21 @@ public class FileSystem {
             running = null;
             return;
         }
-        disk.addRequest(running);
+        if(disk.addRequest(running)) {
+            
+        }
         blockedList.put(running.getId(), running.setStatus(Status.BLOCKED));
         running = null;
+    }
+    
+    private void exitProcess() {
+        exit.enqueue(running.setStatus(Status.EXIT));
+        running = null;
+        return;
+    }
+    
+    public void setDiskSchedule(DISK_SCHEDULE sd) {
+        disk.setSchedule(sd);
     }
     
     private void runTime() throws InterruptedException {

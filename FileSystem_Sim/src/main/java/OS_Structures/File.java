@@ -17,9 +17,10 @@ public class File implements DiskElement {
     private Folder parent;
     private User owner;
 
-    public File(String name, User owner, int size) {
+    public File(String name, User owner, int size, Folder parent) {
         this.name = name;
         this.size = size;
+        this.parent = parent;
     }
     
     public int getFileDir() {

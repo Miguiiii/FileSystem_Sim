@@ -3,9 +3,10 @@
  * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
  */
 package OS_Structures;
-import Structures.List;
-import Structures.Queue;
+import Structures.*;
 import java.util.concurrent.Semaphore;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 /**
  *
  * @author Miguel
@@ -36,7 +37,7 @@ public class Disk {
         for (int i=0; i<this.size; i++) {
             memory[i] = new Block(i);
         }
-        Root = new Folder("Root", new User("Nop", true));
+        Root = new Folder("Root", new User("Nop", true), null);
         requests = new List();
         completed = new Queue();
         req = new Semaphore(1);
@@ -82,11 +83,22 @@ public class Disk {
     private void diskOn() throws InterruptedException {
         changeSchedule();
         req.acquire();
-        getNextRequest();
+        if (getNextRequest()) {
+            
+        }
     }
     
-    private void getNextRequest() {
-        
+    private boolean getNextRequest() {
+        if (requests.isEmpty()) {
+            return false;
+        }
+        switch (schedule) {
+            case DISK_SCHEDULE.FIFO:
+                current = requests.deleteBegin();
+            default:
+                break;
+        }
+        return true;
     }
     
     public void setSchedule(DISK_SCHEDULE ns) {
@@ -95,27 +107,48 @@ public class Disk {
     
     private void changeSchedule() {
         if (newSched == schedule) return;
-        if (newSched != DISK_SCHEDULE.FIFO) {
-            
+        try {
+            req.acquire();
+        } catch (InterruptedException ex) {
+            Logger.getLogger(Disk.class.getName()).log(Level.SEVERE, null, ex);
+        }
+        BinaryHeap<IORequest> sorted = new BinaryHeap(requests.getLength());
+        if (newSched != DISK_SCHEDULE.FIFO && schedule == DISK_SCHEDULE.FIFO) {
+            for (IORequest r:requests) {
+                sorted.insert(r, r.getHeadDir());
+            }
+        } else if (newSched == DISK_SCHEDULE.FIFO && schedule != DISK_SCHEDULE.FIFO) {
+            for (IORequest r:requests) {
+                sorted.insert(r, r.getArrival());
+            }
+        } else {
+            schedule = newSched;
+            return;
+        }
+        requests = new List();
+        while (sorted.getSize()!=0) {
+            requests.insertFinal(sorted.extractRoot());
         }
         schedule = newSched;
     }
     
     public void deleteBlocks(Block head) {
+        Block next = head;
         do {
             head.emptyBlock();
-            head = head.getNext();
+            next = head.getNext();
             realArm = head.getBlockDir();
             memory[realArm].emptyBlock();
         } while (head != null);
     }
     
-    private void CRUDdelete(DiskElement file) {
-        if (file instanceof Folder folder) {
+    private void CRUDdelete(DiskElement element) {
+        if (element instanceof Folder folder) {
             for(DiskElement dE:folder.getContents().getValues()) {
-                deleteFile(dE);
+                CRUDdelete(dE);
             }
         }
+        File file = (File) element;
         Block pointer = memory[file.getFileDir()];
         while (pointer != null) {
             pointer = pointer.getNext();
@@ -155,7 +188,7 @@ public class Disk {
         }
     }
     
-    public void addRequest(Process process) {
+    public boolean addRequest(Process process) {
         IORequest newRequest = new IORequest(process.getId(), process.getElement(), process.getCrud(), process.getOwner(), pseudo_date);
         try {
             req.acquire();
@@ -168,6 +201,7 @@ public class Disk {
         }
         req.release();
         pseudo_date++;
+        return false;
     }
 
     public int getFreeSpace() {
@@ -182,12 +216,9 @@ public class Disk {
         return size;
     }
     
-    
-    
     private int getVirtualArm() {
         int arm = 0;
         for (IORequest i: requests) {
-            
         }
         return arm;
     }
