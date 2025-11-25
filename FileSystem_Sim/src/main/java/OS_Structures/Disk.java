@@ -5,6 +5,7 @@
 package OS_Structures;
 import Structures.List;
 import Structures.Queue;
+import java.util.concurrent.Semaphore;
 /**
  *
  * @author Miguel
@@ -19,11 +20,15 @@ public class Disk {
     private int realArm = 0;
     private int virtualArm = 0;
     private List<IORequest> requests;
+    private IORequest current = null;
     private Queue<IORequest> completed;
     private DISK_SCHEDULE schedule = DISK_SCHEDULE.FIFO;
+    private DISK_SCHEDULE newSched = DISK_SCHEDULE.FIFO;
     private static long pseudo_date = 0;
+    private Thread diskThread;
+    private Semaphore req;
+    private Semaphore comp;
     private boolean started = false;
-    private boolean stopped = false;
 
     public Disk(int size) {
         this.memory = new Block[size];
@@ -31,9 +36,11 @@ public class Disk {
         for (int i=0; i<this.size; i++) {
             memory[i] = new Block(i);
         }
-        Root = new Folder("Root");
+        Root = new Folder("Root", new User("Nop", true));
         requests = new List();
         completed = new Queue();
+        req = new Semaphore(1);
+        comp = new Semaphore(1);
     }
     /*  Constructor para crear disco cargando un archivo json
     public Disk(int size, int x) {
@@ -41,8 +48,12 @@ public class Disk {
     }
     */
     public int[] getCompleted() {
+        try {
+            comp.acquire();
+        } catch (InterruptedException ex) {
+            System.getLogger(Disk.class.getName()).log(System.Logger.Level.ERROR, (String) null, ex);
+        }
         if (completed.getLength() == 0) return new int[0];
-        this.stopped = true;
         int[] toReturn = new int[completed.getLength()];
         int i = 0;
         while (completed.getLength()!=0) {
@@ -50,11 +61,61 @@ public class Disk {
             i++;
         }
         completed = new Queue();
-        this.stopped = false;
+        comp.release();
         return toReturn;
     }
     
-    private void deleteFile(File file) {
+    public void bootDisk() {
+        diskThread = new Thread(()->{
+            while (true) {
+                try {
+                    diskOn();
+                } catch (InterruptedException ex) {
+                    System.getLogger(FileSystem.class.getName()).log(System.Logger.Level.ERROR, (String) null, ex);
+                }
+            }
+        });
+        diskThread.setDaemon(true);
+        diskThread.start();
+    }
+    
+    private void diskOn() throws InterruptedException {
+        changeSchedule();
+        req.acquire();
+        getNextRequest();
+    }
+    
+    private void getNextRequest() {
+        
+    }
+    
+    public void setSchedule(DISK_SCHEDULE ns) {
+        newSched = ns;
+    }
+    
+    private void changeSchedule() {
+        if (newSched == schedule) return;
+        if (newSched != DISK_SCHEDULE.FIFO) {
+            
+        }
+        schedule = newSched;
+    }
+    
+    public void deleteBlocks(Block head) {
+        do {
+            head.emptyBlock();
+            head = head.getNext();
+            realArm = head.getBlockDir();
+            memory[realArm].emptyBlock();
+        } while (head != null);
+    }
+    
+    private void CRUDdelete(DiskElement file) {
+        if (file instanceof Folder folder) {
+            for(DiskElement dE:folder.getContents().getValues()) {
+                deleteFile(dE);
+            }
+        }
         Block pointer = memory[file.getFileDir()];
         while (pointer != null) {
             pointer = pointer.getNext();
@@ -95,17 +156,33 @@ public class Disk {
     }
     
     public void addRequest(Process process) {
-        if (process.getFile().getSize()>freeSpace) {
-            System.out.println("El archivo no cabe en disco");
-            return;
+        IORequest newRequest = new IORequest(process.getId(), process.getElement(), process.getCrud(), process.getOwner(), pseudo_date);
+        try {
+            req.acquire();
+        } catch (InterruptedException ex) {
+            System.getLogger(Disk.class.getName()).log(System.Logger.Level.ERROR, (String) null, ex);
         }
-        IORequest newRequest = new IORequest(process.getId(), process.getFile(), process.getCrud(), pseudo_date);
         switch (schedule) {
             case (DISK_SCHEDULE.FIFO) -> requests.insertFinal(newRequest);
             default -> insertScan(newRequest);
         }
+        req.release();
         pseudo_date++;
     }
+
+    public int getFreeSpace() {
+        return freeSpace;
+    }
+
+    public int getUsedSpace() {
+        return usedSpace;
+    }
+
+    public int getSize() {
+        return size;
+    }
+    
+    
     
     private int getVirtualArm() {
         int arm = 0;
