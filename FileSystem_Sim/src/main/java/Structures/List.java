@@ -161,7 +161,7 @@ public class List<T> implements Iterable<T> {
         if (index == 0) {
             return deleteBegin();
         }
-        if (index == getLength()) {
+        if (index == getLength()-1) {
             return deleteFinal();
         }
         if (index < getLength()) {

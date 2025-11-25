@@ -3,13 +3,13 @@
  * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
  */
 package Structures;
-
+import java.util.Iterator;
 /**
  *
  * @author Miguel
  * @param <T> Any Object
  */
-public class Queue<T> {
+public class Queue<T> implements Iterable<T> {
     
     private Node<T> head;
     private Node<T> tail;
@@ -33,7 +33,7 @@ public class Queue<T> {
         return tail;
     }
 
-    public void setTail(Node<T> tail) {
+    protected void setTail(Node<T> tail) {
         this.tail = tail;
     }
     
@@ -77,5 +77,37 @@ public class Queue<T> {
         length--;
         return temp.getElement();
     }
+
+    @Override
+    public Iterator<T> iterator() {
+        return new QueueIterator(this);
+    }
     
+}
+
+class QueueIterator<T> implements Iterator<T> {
+    
+    Node<T> pointer;
+    
+    public QueueIterator(Queue list) {
+        pointer = list.getHead();
+    }
+    
+    @Override
+    public boolean hasNext() {
+        return pointer != null;
+    }
+
+    @Override
+    public T next() {
+        T current = pointer.getElement();
+        pointer = pointer.getNext();
+        return current;
+    }
+
+    @Override
+    public void remove() {
+        throw new UnsupportedOperationException();
+    }
+
 }
