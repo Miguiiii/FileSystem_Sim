@@ -12,12 +12,13 @@ public class Folder implements DiskElement {
     
     private String name;
     private HashMap<String, DiskElement> contents;
-    private Folder parent;
+    private Folder parent = null;
     private User owner;
 
-    public Folder(String name, User owner) {
+    public Folder(String name, User owner, Folder parent) {
         this.name = name;
         this.contents = new HashMap(15);
+        this.parent = parent;
     }
     
     public void saveElement(DiskElement element) {

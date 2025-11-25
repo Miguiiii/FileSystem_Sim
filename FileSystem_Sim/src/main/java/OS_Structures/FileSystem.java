@@ -21,7 +21,7 @@ public class FileSystem {
     private Queue<Process> exit;
     private Disk disk;
     private GUI ventana;
-    private HashMap<Integer, Block> buffer;
+    private Buffer buffer;
     private Thread mainThread;
     private Semaphore newSem;
 
@@ -35,6 +35,7 @@ public class FileSystem {
     }
     
     public void boot() {
+        disk.bootDisk();
         mainThread = new Thread(()->{
             while (true) {
                 try {
@@ -48,21 +49,32 @@ public class FileSystem {
         mainThread.start();
     }
     
-    public void createProcess(DiskElement file, CRUD type, User owner) {
+    public void createProcess(DiskElement file, CRUD type, User owner, String newName, Folder newParent) {
         try {
             newSem.acquire();
-            newsList.enqueue(new Process(type, file, owner));
+            Process p = new Process(type, file, owner);
+            switch (type) {
+                case CRUD.CREATE -> p.setNewParent(newParent);
+                case CRUD.UPDATE -> p.setNewName(newName);
+            }
+            newsList.enqueue(p);
             newSem.release();
         } catch (InterruptedException ex) {
             System.getLogger(FileSystem.class.getName()).log(System.Logger.Level.ERROR, (String) null, ex);
         }
     }
     
+    public void createProcess(DiskElement file, CRUD type, User owner, String newName) {
+        createProcess(file, type, owner, newName, null);
+    }
+    
+    public void createProcess(DiskElement file, CRUD type, User owner, Folder newParent) {
+        createProcess(file, type, owner, null, newParent);
+    }
+    
     private void runProcess() {
         if (running.isRequestCompleted()) {
-            exit.enqueue(running.setStatus(Status.EXIT));
-            running = null;
-            return;
+            exitProcess();
         }
         if ((running.getElement().getOwner()!=running.getOwner() && !running.getOwner().isAdmin())||(!running.getElement().isFile() && !running.getOwner().isAdmin())) {
             System.out.println("Proceso no permitido, eliminando proceso");
@@ -81,9 +93,27 @@ public class FileSystem {
             running = null;
             return;
         }
-        disk.addRequest(running);
+        if (running.getCrud()==CRUD.READ) {
+            IORequest newRequest = new IORequest(running.getId(), running.getElement(), running.getCrud(), running.getOwner(), 0);
+            if (buffer.checkBuffer(newRequest.getHeadDir())) {
+                //logica del buffer
+            }
+        }
+        if(disk.addRequest(running)) {
+            
+        }
         blockedList.put(running.getId(), running.setStatus(Status.BLOCKED));
         running = null;
+    }
+    
+    private void exitProcess() {
+        exit.enqueue(running.setStatus(Status.EXIT));
+        running = null;
+        return;
+    }
+    
+    public void setDiskSchedule(DISK_SCHEDULE sd) {
+        disk.setSchedule(sd);
     }
     
     private void runTime() throws InterruptedException {
@@ -98,6 +128,7 @@ public class FileSystem {
         }
         int[] completed = disk.getCompleted();
         for(int id:completed) {
+            
             readyList.enqueue(blockedList.deleteEntry(id).completeRequest());
         }
     }

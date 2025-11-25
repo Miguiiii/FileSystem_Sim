@@ -11,12 +11,16 @@ package OS_Structures;
 public class IORequest {
     
     private int id;
-    private int headDir;
+    private int headDir = 0;
     private CRUD type;
     private File file;
     private Folder folder = null;
     private User owner;
     private boolean isFile = false;
+    private long arrival;
+    
+    private String newName;
+    private Folder newParent;
 
     public IORequest(int id, DiskElement file, CRUD type, User owner, long dateCreated) {
         this.id = id;
@@ -30,6 +34,7 @@ public class IORequest {
         }
         this.type = type;
         this.owner = owner;
+        this.arrival = dateCreated;
     }
     
     public DiskElement getElement() {
@@ -63,8 +68,28 @@ public class IORequest {
         return owner;
     }
     
+    public long getArrival() {
+        return arrival;
+    }
+    
     public boolean isContentAFile() {
         return isFile;
+    }
+
+    public String getNewName() {
+        return newName;
+    }
+
+    public void setNewName(String newName) {
+        this.newName = newName;
+    }
+
+    public Folder getNewParent() {
+        return newParent;
+    }
+
+    public void setNewParent(Folder newParent) {
+        this.newParent = newParent;
     }
     
 }

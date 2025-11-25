@@ -34,7 +34,7 @@ public class GUI extends javax.swing.JPanel {
     }
 
     private void setupTree() {
-        rootNode = new DefaultMutableTreeNode(new Folder("Root", new User("Nop", true)));
+        rootNode = new DefaultMutableTreeNode("Root");
         treeModel = new DefaultTreeModel(rootNode);
         jTree1.setModel(treeModel);
         updateLocationComboBox();

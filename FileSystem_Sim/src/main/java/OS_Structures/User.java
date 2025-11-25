@@ -25,5 +25,13 @@ public class User {
     public boolean isAdmin() {
         return isAdmin;
     }
+
+    @Override
+    public String toString() {
+        if (isAdmin) {
+            return "Admin: " + name;
+        }
+        return "User: " + name;
+    }
     
 }

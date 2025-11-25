@@ -3,9 +3,10 @@
  * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
  */
 package OS_Structures;
-import Structures.List;
-import Structures.Queue;
+import Structures.*;
 import java.util.concurrent.Semaphore;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 /**
  *
  * @author Miguel
@@ -18,7 +19,7 @@ public class Disk {
     private int size;
     private Folder Root;
     private int realArm = 0;
-    private int virtualArm = 0;
+    private boolean isArmGoingRight = true;
     private List<IORequest> requests;
     private IORequest current = null;
     private Queue<IORequest> completed;
@@ -36,7 +37,7 @@ public class Disk {
         for (int i=0; i<this.size; i++) {
             memory[i] = new Block(i);
         }
-        Root = new Folder("Root", new User("Nop", true));
+        Root = new Folder("Root", new User("Nop", true), null);
         requests = new List();
         completed = new Queue();
         req = new Semaphore(1);
@@ -82,11 +83,48 @@ public class Disk {
     private void diskOn() throws InterruptedException {
         changeSchedule();
         req.acquire();
-        getNextRequest();
+        if (getNextRequest()) {
+            req.release();
+            runRequest(current);
+        }
+        comp.acquire();
+        completed.enqueue(current);
+        current = null;
+        comp.release();
+        req.acquire();
+        if (requests.getLength()==0) {
+            pseudo_date = 0;
+        }
+        req.release();
     }
     
-    private void getNextRequest() {
-        
+    public void runRequest(IORequest r) {
+        switch (r.getType()) {
+            case CRUD.CREATE -> addElement(r.getElement(), r.getNewParent());
+            case CRUD.READ -> readFile((File) r.getElement());
+            case CRUD.UPDATE -> modElement(r.getElement(), r.getNewName());
+            case CRUD.DELETE -> deleteElement(r.getElement());
+        }
+    }
+    
+    private boolean getNextRequest() {
+        if (requests.isEmpty()) {
+            return false;
+        }
+        int arm = 0;
+        switch (schedule) {
+            case DISK_SCHEDULE.FIFO:
+                current = requests.deleteBegin();
+                return true;
+            case DISK_SCHEDULE.SCAN:
+                arm = scan_disk();
+            case DISK_SCHEDULE.C_SCAN:
+                arm = c_scan_disk();
+            case DISK_SCHEDULE.SHORTEST_SERVICE_TIME:
+                arm = sst_scan_disk();
+        }
+        current = requests.deleteAtIndex(arm);
+        return true;
     }
     
     public void setSchedule(DISK_SCHEDULE ns) {
@@ -95,32 +133,45 @@ public class Disk {
     
     private void changeSchedule() {
         if (newSched == schedule) return;
-        if (newSched != DISK_SCHEDULE.FIFO) {
-            
+        try {
+            req.acquire();
+        } catch (InterruptedException ex) {
+            Logger.getLogger(Disk.class.getName()).log(Level.SEVERE, null, ex);
+        }
+        BinaryHeap<IORequest> sorted = new BinaryHeap(requests.getLength());
+        if (newSched != DISK_SCHEDULE.FIFO && schedule == DISK_SCHEDULE.FIFO) {
+            for (IORequest r:requests) {
+                sorted.insert(r, r.getHeadDir());
+            }
+        } else if (newSched == DISK_SCHEDULE.FIFO && schedule != DISK_SCHEDULE.FIFO) {
+            for (IORequest r:requests) {
+                sorted.insert(r, r.getArrival());
+            }
+        } else {
+            schedule = newSched;
+            return;
+        }
+        requests = new List();
+        while (sorted.getSize()!=0) {
+            requests.insertFinal(sorted.extractRoot());
         }
         schedule = newSched;
     }
     
-    public void deleteBlocks(Block head) {
-        do {
-            head.emptyBlock();
-            head = head.getNext();
-            realArm = head.getBlockDir();
-            memory[realArm].emptyBlock();
-        } while (head != null);
-    }
-    
-    private void CRUDdelete(DiskElement file) {
-        if (file instanceof Folder folder) {
+    private void deleteElement(DiskElement element) {
+        if (element instanceof Folder folder) {
             for(DiskElement dE:folder.getContents().getValues()) {
-                deleteFile(dE);
+                deleteElement(dE);
             }
         }
+        File file = (File) element;
         Block pointer = memory[file.getFileDir()];
+        realArm = file.getFileDir();
         while (pointer != null) {
-            pointer = pointer.getNext();
+            Block next = pointer.getNext();
+            pointer.emptyBlock();
+            pointer = next;
             realArm = pointer.getBlockDir();
-            memory[realArm].emptyBlock();
         }
     }
     
@@ -135,28 +186,32 @@ public class Disk {
         return blocks;
     }
     
-    private void modFile(File file, String newName) {
-        Block pointer = memory[file.getFileDir()];
-        while (pointer != null) {
-            pointer = pointer.getNext();
-            realArm = pointer.getBlockDir();
-            memory[realArm].emptyBlock();
+    private DiskElement modElement(DiskElement element, String newName) {
+        if (element instanceof File file) {
+            readFile(file);
         }
+        element.setName(newName);
+        return element;
     }
     
-    private DiskElement addFile() {
-        return null;
+    private DiskElement addElement(DiskElement element, Folder folder) {
+        folder.saveElement(element);
+        return element;
     }
     
     private void insertScan(IORequest nRequest) {
         int i = 0;
         for (IORequest r: requests) {
-            
+            if (r.getHeadDir()<nRequest.getHeadDir()) break;
+            i++;
         }
+        requests.insertAtIndex(nRequest, i);
     }
     
-    public void addRequest(Process process) {
+    public boolean addRequest(Process process) {
         IORequest newRequest = new IORequest(process.getId(), process.getElement(), process.getCrud(), process.getOwner(), pseudo_date);
+        newRequest.setNewName(process.getNewName());
+        newRequest.setNewParent(process.getNewParent());
         try {
             req.acquire();
         } catch (InterruptedException ex) {
@@ -168,6 +223,7 @@ public class Disk {
         }
         req.release();
         pseudo_date++;
+        return false;
     }
 
     public int getFreeSpace() {
@@ -182,14 +238,49 @@ public class Disk {
         return size;
     }
     
-    
-    
-    private int getVirtualArm() {
+    private int scan_disk() {
         int arm = 0;
-        for (IORequest i: requests) {
-            
+        for (IORequest r: requests) {
+            if (realArm<=r.getHeadDir()) break;
+            arm++;
+        }
+        if (arm==requests.getLength()) {
+            isArmGoingRight = false;
+            return requests.getLength()-1;
+        }
+        if (isArmGoingRight) return arm;
+        if (arm<=1) {
+            isArmGoingRight = true;
+            return arm;
+        }
+        return 0;
+    }
+    
+    private int c_scan_disk() {
+        int arm = 0;
+        while (true) {
+            if (arm == requests.getLength()) return 0;
+            if (realArm<=requests.getElmenetAtIndex(arm).getHeadDir()) break;
+            arm++;
         }
         return arm;
+    }
+    
+    private int sst_scan_disk() {
+        int arm1;
+        int arm2 = 0;
+        for (IORequest r: requests) {
+            if (realArm<=r.getHeadDir()) break;
+            arm2++;
+        }
+        if (arm2==requests.getLength()-1) {
+            arm1 = arm2 - 1;
+        } else if (requests.getElmenetAtIndex(arm2).getHeadDir() == realArm) {
+            return arm2;
+        }
+        arm1 = arm2 - 1;
+        if (realArm - requests.getElmenetAtIndex(arm1).getHeadDir() < requests.getElmenetAtIndex(arm2).getHeadDir() - realArm) return arm1;
+        return arm2;
     }
     
     private Integer findFreeSpace(int start) {
