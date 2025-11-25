@@ -22,7 +22,7 @@ public class User {
         return name;
     }
 
-    public boolean isIsAdmin() {
+    public boolean isAdmin() {
         return isAdmin;
     }
     
