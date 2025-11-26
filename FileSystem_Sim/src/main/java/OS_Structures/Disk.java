@@ -1,344 +1,292 @@
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
- */
 package OS_Structures;
-import Structures.*;
-import java.util.concurrent.Semaphore;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-/**
- *
- * @author Miguel
- */
+
+import Structures.*; 
+import java.util.ArrayList; 
+import java.util.Collections;
+import java.util.Comparator;
+
 public class Disk {
     
-    private Block[] memory;
-    private int freeSpace;
-    private int usedSpace = 0;
-    private int size;
-    private Folder Root;
-    private int realArm = 0;
-    private boolean isArmGoingRight = true;
-    private List<IORequest> requests;
-    private IORequest current = null;
-    private Queue<IORequest> completed;
-    private DISK_SCHEDULE schedule = DISK_SCHEDULE.FIFO;
-    private DISK_SCHEDULE newSched = DISK_SCHEDULE.FIFO;
-    private static long pseudo_date = 0;
+    private Block[] memory;     
+    private int size;           
+    private int freeSpace;      
+    private Folder Root; 
+    private DISK_SCHEDULE currentSchedule = DISK_SCHEDULE.FIFO;
+    private int headPosition = 0; 
+    private boolean directionUp = true;
+    private java.util.List<IORequest> pendingRequests = new ArrayList<>(); 
+    private Queue<Integer> completedRequests = new Queue<>(); 
+    private boolean active = true;
     private Thread diskThread;
-    private Semaphore req;
-    private Semaphore comp;
-    private boolean started = false;
+    private final int DELAY = 500; 
 
     public Disk(int size) {
+        this.size = size;
+        this.freeSpace = size;
         this.memory = new Block[size];
-        this.freeSpace = this.size = size;
-        for (int i=0; i<this.size; i++) {
-            memory[i] = new Block(i);
+     
+        for (int i = 0; i < size; i++) {
+            memory[i] = new Block(i); 
         }
-        Root = new Folder("Root", new User("Nop", true), null);
-        requests = new List();
-        completed = new Queue();
-        req = new Semaphore(1);
-        comp = new Semaphore(1);
-    }
-    /*  Constructor para crear disco cargando un archivo json
-    public Disk(int size, int x) {
-        this(size);
-    }
-    */
-    public int[] getCompleted() {
-        try {
-            comp.acquire();
-        } catch (InterruptedException ex) {
-            System.getLogger(Disk.class.getName()).log(System.Logger.Level.ERROR, (String) null, ex);
-        }
-        if (completed.getLength() == 0) return new int[0];
-        int[] toReturn = new int[completed.getLength()];
-        int i = 0;
-        while (completed.getLength()!=0) {
-            toReturn[i] = completed.dequeue().getId();
-            i++;
-        }
-        completed = new Queue();
-        comp.release();
-        return toReturn;
+        
+        User sysUser = new User("SYSTEM", true); 
+        Root = new Folder("Root", sysUser, null);
     }
     
     public void bootDisk() {
-        diskThread = new Thread(()->{
-            while (true) {
-                try {
-                    diskOn();
-                } catch (InterruptedException ex) {
-                    System.getLogger(FileSystem.class.getName()).log(System.Logger.Level.ERROR, (String) null, ex);
+        diskThread = new Thread(() -> {
+            while (active) {
+                if (!pendingRequests.isEmpty()) {
+                    IORequest nextReq = selectNextRequest();
+                    if (nextReq != null) {
+                        moveHeadTo(nextReq.getHeadDir());
+                        processRequest(nextReq);          
+                        synchronized(pendingRequests) {
+                            pendingRequests.remove(nextReq);
+                        }
+                    }
                 }
+                
+                try {
+                    Thread.sleep(100); 
+                } catch (InterruptedException ex) {}
             }
         });
-        diskThread.setDaemon(true);
         diskThread.start();
     }
     
-    private void diskOn() throws InterruptedException {
-        changeSchedule();
-        req.acquire();
-        if (getNextRequest()) {
-            req.release();
-            runRequest(current);
-        }
-        comp.acquire();
-        completed.enqueue(current);
-        current = null;
-        comp.release();
-        req.acquire();
-        if (requests.getLength()==0) {
-            pseudo_date = 0;
-        }
-        req.release();
+    public void setSchedule(DISK_SCHEDULE schedule) {
+        this.currentSchedule = schedule;
     }
     
-    public void runRequest(IORequest r) {
-        switch (r.getType()) {
-            case CRUD.CREATE -> addElement(r.getElement(), r.getNewParent());
-            case CRUD.READ -> readFile((File) r.getElement());
-            case CRUD.UPDATE -> modElement(r.getElement(), r.getNewName());
-            case CRUD.DELETE -> deleteElement(r.getElement());
+    private IORequest selectNextRequest() {
+        if (pendingRequests.isEmpty()) return null;
+
+        switch (currentSchedule) {
+            case FIFO:
+                return pendingRequests.get(0);
+            case SHORTEST_SERVICE_TIME: // SSTF
+                return getSSTF();
+            case SCAN:
+                return getSCAN();
+            case C_SCAN:
+                return getCSCAN();
+            default:
+                return pendingRequests.get(0);
         }
     }
-    
-    private boolean getNextRequest() {
-        if (requests.isEmpty()) {
-            return false;
+
+    private IORequest getSSTF() {
+        IORequest bestReq = null;
+        int minDistance = Integer.MAX_VALUE;
+
+        for (IORequest req : pendingRequests) {
+            int distance = Math.abs(req.getHeadDir() - headPosition);
+            if (distance < minDistance) {
+                minDistance = distance;
+                bestReq = req;
+            }
         }
-        int arm = 0;
-        switch (schedule) {
-            case DISK_SCHEDULE.FIFO:
-                current = requests.deleteBegin();
+        return bestReq;
+    }
+
+    private IORequest getSCAN() {
+        IORequest bestReq = null;
+        int bestDistance = Integer.MAX_VALUE;
+
+        for (IORequest req : pendingRequests) {
+            int dir = req.getHeadDir();
+            if (directionUp) {
+                if (dir >= headPosition && (dir - headPosition < bestDistance)) {
+                    bestDistance = dir - headPosition;
+                    bestReq = req;
+                }
+            } else {
+                if (dir <= headPosition && (headPosition - dir < bestDistance)) {
+                    bestDistance = headPosition - dir;
+                    bestReq = req;
+                }
+            }
+        }
+
+        if (bestReq == null) {
+            directionUp = !directionUp;
+            return getSCAN(); 
+        }
+        
+        return bestReq;
+    }
+
+    private IORequest getCSCAN() {
+        IORequest bestReq = null;
+        int bestDistance = Integer.MAX_VALUE;
+
+        for (IORequest req : pendingRequests) {
+            int dir = req.getHeadDir();
+            if (dir >= headPosition) {
+                int dist = dir - headPosition;
+                if (dist < bestDistance) {
+                    bestDistance = dist;
+                    bestReq = req;
+                }
+            }
+        }
+
+        if (bestReq == null) {
+            bestDistance = Integer.MAX_VALUE;
+            for (IORequest req : pendingRequests) {
+                int dist = req.getHeadDir();
+                if (dist < bestDistance) {
+                    bestDistance = dist;
+                    bestReq = req;
+                }
+            }
+        }
+        
+        return bestReq;
+    }
+    
+    private void moveHeadTo(int targetBlock) {
+        if (targetBlock >= 0 && targetBlock < size) {
+            this.headPosition = targetBlock;
+        }
+    }
+
+    private void processRequest(IORequest req) {
+        try {
+            Thread.sleep(DELAY); 
+        } catch (InterruptedException ex) {}
+
+        boolean success = false;
+        
+        switch (req.getType()) {
+            case CREATE: success = create(req); break; 
+            case READ:   success = true; break; 
+            case UPDATE: 
+                success = true; 
+                if (req.getNewName() != null && !req.getNewName().isEmpty()) {
+                    DiskElement element = req.getElement();
+                    Folder parent = element.getParent();
+                    if (parent != null) {
+                        if (parent.getContents().getValueOfKey(req.getNewName()) == null) {
+                            parent.getContents().deleteEntry(element.getName()); 
+                            element.setName(req.getNewName());
+                            parent.saveElement(element); 
+                        }
+                    } else {
+                        element.setName(req.getNewName());
+                    }
+                }
+                break;
+            case DELETE: success = delete(req); break;
+        }
+        
+        if (success) {
+            completedRequests.enqueue(req.getId());
+        }
+    }
+
+    private boolean create(IORequest req) {
+        DiskElement element = req.getElement();
+        Folder parent = element.getParent();
+        if (!req.isContentAFile()) {
+            if (parent != null) {
+                if (parent.getContents().getValueOfKey(element.getName()) != null) return false;
+                parent.saveElement(element);
                 return true;
-            case DISK_SCHEDULE.SCAN:
-                arm = scan_disk();
-            case DISK_SCHEDULE.C_SCAN:
-                arm = c_scan_disk();
-            case DISK_SCHEDULE.SHORTEST_SERVICE_TIME:
-                arm = sst_scan_disk();
+            }
+            if (element.getParent() == null && element == Root) return true;
+            return false; 
         }
-        current = requests.deleteAtIndex(arm);
+
+        File file = (File) element;
+        int blocksNeeded = file.getSize(); 
+        if (blocksNeeded > freeSpace) return false;
+        int startBlock = findContiguousSpace(blocksNeeded);
+        if (startBlock != -1) {
+            for (int i = 0; i < blocksNeeded; i++) {
+                memory[startBlock + i].fillBlock();
+                freeSpace--;
+                memory[startBlock + i].setNext(null); 
+            }
+            file.setHeadDir(memory[startBlock]);
+            this.headPosition = startBlock; 
+            if (parent != null) {
+                parent.saveElement(file);
+            }
+            return true;
+        }
+        return false; 
+    }
+    
+    private int findContiguousSpace(int needed) {
+        int result = searchChunk(headPosition, size, needed);
+        if (result != -1) return result;
+        result = searchChunk(0, headPosition, needed);
+        if (result != -1) return result;
+        
+        return -1;
+    }
+    
+    private int searchChunk(int start, int end, int needed) {
+        int currentFreeCount = 0;
+        int chunkStart = -1;
+
+        for (int i = start; i < end; i++) {
+            if (memory[i].isFree()) {
+                if (currentFreeCount == 0) {
+                    chunkStart = i; 
+                }
+                currentFreeCount++;
+                if (currentFreeCount == needed) {
+                    return chunkStart;
+                }
+            } else {
+                currentFreeCount = 0; 
+                chunkStart = -1;
+            }
+        }
+        return -1;
+    }
+
+    private boolean delete(IORequest req) {
+        DiskElement element = req.getElement();
+        Folder parent = element.getParent();
+        if (parent != null) {
+            parent.getContents().deleteEntry(element.getName()); 
+        }
+
+        if (!req.isContentAFile()) return true;
+        File file = (File) element;
+        int startDir = file.getFileDir(); 
+        if (startDir < 0 || startDir >= size) return true;
+        this.headPosition = startDir; 
+
+        int blocksToFree = file.getSize();
+        for(int i = 0; i < blocksToFree; i++) {
+            int blockIndex = startDir + i;
+             if (blockIndex < size) {
+                memory[blockIndex].emptyBlock(); 
+                freeSpace++;
+            }
+        }
+        
         return true;
     }
     
-    public void setSchedule(DISK_SCHEDULE ns) {
-        newSched = ns;
-    }
-    
-    private void changeSchedule() {
-        if (newSched == schedule) return;
-        try {
-            req.acquire();
-        } catch (InterruptedException ex) {
-            Logger.getLogger(Disk.class.getName()).log(Level.SEVERE, null, ex);
+    public boolean addRequest(Process p) {
+        IORequest req = new IORequest(p.getId(), p.getElement(), p.getCrud(), p.getOwner(), System.currentTimeMillis());
+        req.setNewName(p.getNewName());
+        req.setNewParent(p.getNewParent());
+        synchronized(pendingRequests) {
+            pendingRequests.add(req);
         }
-        BinaryHeap<IORequest> sorted = new BinaryHeap(requests.getLength());
-        if (newSched != DISK_SCHEDULE.FIFO && schedule == DISK_SCHEDULE.FIFO) {
-            for (IORequest r:requests) {
-                sorted.insert(r, r.getHeadDir());
-            }
-        } else if (newSched == DISK_SCHEDULE.FIFO && schedule != DISK_SCHEDULE.FIFO) {
-            for (IORequest r:requests) {
-                sorted.insert(r, r.getArrival());
-            }
-        } else {
-            schedule = newSched;
-            return;
-        }
-        requests = new List();
-        while (sorted.getSize()!=0) {
-            requests.insertFinal(sorted.extractRoot());
-        }
-        schedule = newSched;
-    }
-    
-    private void deleteElement(DiskElement element) {
-        if (element instanceof Folder folder) {
-            for(DiskElement dE:folder.getContents().getValues()) {
-                deleteElement(dE);
-            }
-        }
-        File file = (File) element;
-        Block pointer = memory[file.getFileDir()];
-        realArm = file.getFileDir();
-        while (pointer != null) {
-            Block next = pointer.getNext();
-            pointer.emptyBlock();
-            pointer = next;
-            realArm = pointer.getBlockDir();
-        }
-    }
-    
-    private List<Block> readFile(File file) {
-        List<Block> blocks = new List();
-        Block pointer = memory[file.getFileDir()];
-        while (pointer != null) {
-            blocks.insertFinal(pointer);
-            realArm = pointer.getBlockDir();
-            pointer = pointer.getNext();
-        }
-        return blocks;
-    }
-    
-    private DiskElement modElement(DiskElement element, String newName) {
-        if (element instanceof File file) {
-            readFile(file);
-        }
-        element.setName(newName);
-        return element;
-    }
-    
-    private DiskElement addElement(DiskElement element, Folder folder) {
-        folder.saveElement(element);
-        return element;
-    }
-    
-    private void insertScan(IORequest nRequest) {
-        int i = 0;
-        for (IORequest r: requests) {
-            if (r.getHeadDir()<nRequest.getHeadDir()) break;
-            i++;
-        }
-        requests.insertAtIndex(nRequest, i);
-    }
-    
-    public boolean addRequest(Process process) {
-        IORequest newRequest = new IORequest(process.getId(), process.getElement(), process.getCrud(), process.getOwner(), pseudo_date);
-        newRequest.setNewName(process.getNewName());
-        newRequest.setNewParent(process.getNewParent());
-        try {
-            req.acquire();
-        } catch (InterruptedException ex) {
-            System.getLogger(Disk.class.getName()).log(System.Logger.Level.ERROR, (String) null, ex);
-        }
-        switch (schedule) {
-            case (DISK_SCHEDULE.FIFO) -> requests.insertFinal(newRequest);
-            default -> insertScan(newRequest);
-        }
-        req.release();
-        pseudo_date++;
-        return false;
+        return true;
     }
 
-    public int getFreeSpace() {
-        return freeSpace;
-    }
-
-    public int getUsedSpace() {
-        return usedSpace;
-    }
-
-    public int getSize() {
-        return size;
-    }
-    
-    private int scan_disk() {
-        int arm = 0;
-        for (IORequest r: requests) {
-            if (realArm<=r.getHeadDir()) break;
-            arm++;
-        }
-        if (arm==requests.getLength()) {
-            isArmGoingRight = false;
-            return requests.getLength()-1;
-        }
-        if (isArmGoingRight) return arm;
-        if (arm<=1) {
-            isArmGoingRight = true;
-            return arm;
-        }
-        return 0;
-    }
-    
-    private int c_scan_disk() {
-        int arm = 0;
-        while (true) {
-            if (arm == requests.getLength()) return 0;
-            if (realArm<=requests.getElmenetAtIndex(arm).getHeadDir()) break;
-            arm++;
-        }
-        return arm;
-    }
-    
-    private int sst_scan_disk() {
-        int arm1;
-        int arm2 = 0;
-        for (IORequest r: requests) {
-            if (realArm<=r.getHeadDir()) break;
-            arm2++;
-        }
-        if (arm2==requests.getLength()-1) {
-            arm1 = arm2 - 1;
-        } else if (requests.getElmenetAtIndex(arm2).getHeadDir() == realArm) {
-            return arm2;
-        }
-        arm1 = arm2 - 1;
-        if (realArm - requests.getElmenetAtIndex(arm1).getHeadDir() < requests.getElmenetAtIndex(arm2).getHeadDir() - realArm) return arm1;
-        return arm2;
-    }
-    
-    private Integer findFreeSpace(int start) {
-        if (freeSpace == 0) {
-            return null;
-        }
-        for (int i=start; i<this.size; i++) {
-            if (memory[i].isFree()) {return i;}
-        }
-        return null;
-    }
-    
-    private Integer findFreeSpace() {
-        return findFreeSpace(0);
-    } 
-    
-    //No se si pasarle como argumento el json o el path al archivo
-    public void loadFromFile() {
-        if (started) {
-            return; //Para evitar que se sobreescriba el disco a mitad de ejecución
-        }
-        //CÓDIGO PARA CARGAR ARCHIVOS, FALTA IMPLEMENTAR CON JSON
-        /*
-        Se manda a cargar el root folder:
-        
-        loadFolder(root);
-        */
-    }
-    //Falta por implementar
-    //IMPORTANTE: COLOCARLE COMO ARGUMENTO EL PASARLE UNA CARPETA (FOLDER)
-    private void loadFolder() {
-        /*
-        for (i in folder):
-            if i.type==folder:
-                loadFolder(i)       Se usa recurrencia para cargar la carpeta
-                continue
-            loadFile(i)             Como no es carpeta, se carga como archivo
-        
-        */
-    }
-    //Falta por implementar
-    //IMPORTANTE: COLOCARLE COMO ARGUMENTO EL PASARLE UN ARCHIVO
-    private void loadFile() {
-        
-    }
-    
-    /* POSIBLE ESTRUCTURA PARA EL JSON:
-    {disk_size: 323,
-    root: {
-        isDir:true,
-        children:{
-            file1:{
-                //INFO DEL ARCHIVO
-                blocks: [5, 123, 6, 126, 9]     //Las posiciones de los bloques del archivo
-            }
-        }
-    }
-    
-    */
-    
+    public Queue<Integer> getCompleted() { return completedRequests; }
+    public Folder getRoot() { return Root; }
+    public Block[] getMemory() { return memory; }
+    public int getFreeSpace() { return freeSpace; }
+    public int getHeadPosition() { return headPosition; } 
 }

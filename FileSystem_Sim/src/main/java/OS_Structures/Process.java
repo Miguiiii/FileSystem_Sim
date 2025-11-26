@@ -1,7 +1,3 @@
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
- */
 package OS_Structures;
 
 /**
@@ -9,6 +5,8 @@ package OS_Structures;
  * @author Miguel
  */
 public class Process {
+    
+    private static int nextId = 1;
     
     private int id;
     private CRUD crud;
@@ -23,6 +21,8 @@ public class Process {
     private Folder newParent;
 
     public Process(CRUD crud, DiskElement file, User owner) {
+        this.id = nextId++;
+        
         this.crud = crud;
         if (file instanceof File) {
             this.file = (File) file;
@@ -31,7 +31,7 @@ public class Process {
         if (file instanceof Folder) {
             this.folder = (Folder) file;
         }
-        this.status = status.NEW;
+        this.status = Status.NEW; 
         this.owner = owner;
     }
 
@@ -99,5 +99,4 @@ public class Process {
     public void setNewParent(Folder newParent) {
         this.newParent = newParent;
     }
-    
 }

@@ -1,48 +1,38 @@
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
- */
 package OS_Structures;
 
 import Structures.HashMap;
 import Structures.Queue;
 import java.util.concurrent.Semaphore;
-import main.GUI;
 
-/**
- *
- * @author Miguel
- */
 public class FileSystem {
     private Process running = null;
     private Queue<Process> readyList;
     private Queue<Process> newsList;
-    private HashMap<Integer, Process> blockedList;
+    private HashMap<Integer, Process> blockedList; 
     private Queue<Process> exit;
     private Disk disk;
-    private GUI ventana;
-    private Buffer buffer;
     private Thread mainThread;
     private Semaphore newSem;
+    private boolean systemActive = true;
 
-    public FileSystem() {
-        this.readyList = new Queue();
-        this.newsList = new Queue();
-        this.blockedList = new HashMap(20);
-        this.exit = new Queue();
+    public FileSystem(int diskSize) {
+        this.readyList = new Queue<>();
+        this.newsList = new Queue<>();
+        this.blockedList = new HashMap<>(20);
+        this.exit = new Queue<>();
         this.newSem = new Semaphore(1);
-        this.disk = new Disk(512); //PROVICIONAL
+        this.disk = new Disk(diskSize); 
     }
     
     public void boot() {
+        System.out.println("[BOOT] Sistema Iniciado.");
         disk.bootDisk();
-        mainThread = new Thread(()->{
-            while (true) {
+        mainThread = new Thread(() -> {
+            while (systemActive) {
                 try {
                     runTime();
-                } catch (InterruptedException ex) {
-                    System.getLogger(FileSystem.class.getName()).log(System.Logger.Level.ERROR, (String) null, ex);
-                }
+                    Thread.sleep(100); 
+                } catch (InterruptedException ex) {}
             }
         });
         mainThread.setDaemon(true);
@@ -53,84 +43,82 @@ public class FileSystem {
         try {
             newSem.acquire();
             Process p = new Process(type, file, owner);
-            switch (type) {
-                case CRUD.CREATE -> p.setNewParent(newParent);
-                case CRUD.UPDATE -> p.setNewName(newName);
-            }
+            p.setNewName(newName);
+            p.setNewParent(newParent);
             newsList.enqueue(p);
+            System.out.println("[SYSTEM] Nuevo proceso en cola NEW: ID " + p.getId());
             newSem.release();
-        } catch (InterruptedException ex) {
-            System.getLogger(FileSystem.class.getName()).log(System.Logger.Level.ERROR, (String) null, ex);
+        } catch (InterruptedException ex) {}
+    }
+
+    private void runTime() {
+        while (!newsList.isEmpty()) {
+            Process p = newsList.dequeue();
+            p.setStatus(Status.READY);
+            readyList.enqueue(p);
+            System.out.println("[SYSTEM] Proceso " + p.getId() + " movido a READY.");
+        }
+
+        if (running == null && !readyList.isEmpty()) {
+            running = readyList.dequeue();
+            running.setStatus(Status.RUNNING);
+            runProcess(); 
+        }
+
+        Queue<Integer> completed = disk.getCompleted();
+        while (!completed.isEmpty()) {
+            int pid = completed.dequeue();
+            Process p = blockedList.getValueOfKey(pid);
+            
+            if (p != null) {
+                p.completeRequest();
+                System.out.println("[SYSTEM] Proceso " + pid + " completó I/O.");
+                terminateProcess(p); 
+                blockedList.deleteEntry(pid);
+            }
         }
     }
-    
-    public void createProcess(DiskElement file, CRUD type, User owner, String newName) {
-        createProcess(file, type, owner, newName, null);
-    }
-    
-    public void createProcess(DiskElement file, CRUD type, User owner, Folder newParent) {
-        createProcess(file, type, owner, null, newParent);
-    }
-    
+
     private void runProcess() {
-        if (running.isRequestCompleted()) {
-            exitProcess();
-        }
-        if ((running.getElement().getOwner()!=running.getOwner() && !running.getOwner().isAdmin())||(!running.getElement().isFile() && !running.getOwner().isAdmin())) {
-            System.out.println("Proceso no permitido, eliminando proceso");
-            running = null;
-            return;
-        }
-        if (running.getCrud()==CRUD.CREATE && running.getElement() instanceof File file1) {
-            if (disk.getFreeSpace()<file1.getSize()) {
-                System.out.println("Este archivo no cabe en el disco, eliminando proceso");
-                running = null;
+        if (running == null) return;
+        
+        boolean isFile = running.getElement().isFile();
+        CRUD opType = running.getCrud();
+
+        if (opType == CRUD.CREATE && isFile) {
+            File f = (File) running.getElement();
+            if (disk.getFreeSpace() < f.getSize()) {
+                System.out.println("[SYSTEM] Error: Espacio insuficiente para proceso " + running.getId());
+                terminateProcess(running);
+                running = null; 
                 return;
             }
         }
-        if ((running.getCrud()==CRUD.READ||running.getCrud()==CRUD.UPDATE) && !running.isContentAFile()) {
-            System.out.println("No se puede Leer una carpeta, eliminando proceso");
+
+        if (disk.addRequest(running)) {
+            running.setStatus(Status.BLOCKED);
+            blockedList.put(running.getId(), running);
+            System.out.println("[SYSTEM] Proceso " + running.getId() + " bloqueado esperando Disco.");
+            running = null; 
+        } else {
+            running.setStatus(Status.READY);
+            readyList.enqueue(running);
             running = null;
-            return;
         }
-        if (running.getCrud()==CRUD.READ) {
-            IORequest newRequest = new IORequest(running.getId(), running.getElement(), running.getCrud(), running.getOwner(), 0);
-            if (buffer.checkBuffer(newRequest.getHeadDir())) {
-                //logica del buffer
-            }
-        }
-        if(disk.addRequest(running)) {
-            
-        }
-        blockedList.put(running.getId(), running.setStatus(Status.BLOCKED));
-        running = null;
     }
-    
-    private void exitProcess() {
-        exit.enqueue(running.setStatus(Status.EXIT));
-        running = null;
-        return;
-    }
-    
-    public void setDiskSchedule(DISK_SCHEDULE sd) {
-        disk.setSchedule(sd);
-    }
-    
-    private void runTime() throws InterruptedException {
-        newSem.acquire();
-        while (newsList.getLength()!=0) {
-            readyList.enqueue(newsList.dequeue().setStatus(Status.READY));
-        }
-        newSem.release();
-        if (!readyList.isEmpty()) {
-            running = readyList.dequeue().setStatus(Status.RUNNING);
-            runProcess();
-        }
-        int[] completed = disk.getCompleted();
-        for(int id:completed) {
-            
-            readyList.enqueue(blockedList.deleteEntry(id).completeRequest());
+
+    private void terminateProcess(Process p) {
+        if (p == null) p = running;
+        if (p != null) {
+            p.setStatus(Status.EXIT);
+            exit.enqueue(p);
+            System.out.println("[SYSTEM] Proceso " + p.getId() + " terminado.");
         }
     }
     
+    public Queue<Process> getNewsList() { return newsList; }
+    public Queue<Process> getReadyList() { return readyList; }
+    public Process getRunningProcess() { return running; }
+    public Queue<Process> getExitList() { return exit; }
+    public Disk getDisk() { return disk; }
 }

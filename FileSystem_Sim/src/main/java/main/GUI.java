@@ -1,796 +1,1048 @@
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/GUIForms/JPanel.java to edit this template
- */
 package main;
+
+import OS_Structures.*;
+import OS_Structures.Process; 
+import Structures.List; 
+import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Component;
+import java.awt.Dimension;
+import java.awt.FlowLayout; 
+import java.awt.GridBagConstraints; 
+import java.awt.GridBagLayout;    
+import java.awt.GridLayout;
+import java.awt.Insets;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.io.BufferedReader; 
+import java.io.BufferedWriter; 
+import java.io.FileReader; 
+import java.io.FileWriter; 
+import java.io.IOException; 
 import java.text.SimpleDateFormat; 
-import java.util.Date; 
-import java.util.Enumeration;
+import java.util.ArrayList; 
+import java.util.Date;
+import javax.swing.BorderFactory;
+import javax.swing.Box; 
+import javax.swing.JButton;
+import javax.swing.JComboBox;
+import javax.swing.JComponent;
+import javax.swing.JFileChooser; 
+import javax.swing.JLabel;
 import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+import javax.swing.JRadioButton;
+import javax.swing.JScrollPane;
+import javax.swing.JSpinner;
+import javax.swing.JSplitPane;
+import javax.swing.JTabbedPane;
 import javax.swing.JTable;
+import javax.swing.JTextArea; 
+import javax.swing.JTextField;
+import javax.swing.JTree;
+import javax.swing.SpinnerNumberModel;
+import javax.swing.SwingUtilities; 
+import javax.swing.Timer;
+import javax.swing.filechooser.FileNameExtensionFilter; 
+import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.DefaultTreeModel;
-import javax.swing.tree.TreePath;
-import OS_Structures.*;
 
-/**
- *
- * @author vince
- */
 public class GUI extends javax.swing.JPanel {
-    private DefaultMutableTreeNode rootNode;
+
+    private FileSystem fileSystem;
+    private User currentUser;
+    private java.util.List<User> userList; 
+    private Timer refreshTimer; 
     private DefaultTreeModel treeModel;
-    private DefaultTableModel tableModelFiles;
-    private DefaultTableModel tableModelDiskView;
-    private DefaultTableModel tableModelBuffer;
-    private Disk disk;
+    private DefaultMutableTreeNode rootNode;
+    private DefaultTableModel diskTableModel;   
+    private DefaultTableModel filesTableModel;  
+    private JTable jTableDiskView;
+    private JTable jTableFiles;
+    private JTree jTree1;
+    private JLabel lblFreeSpace;
+    private JLabel lblHeadPosition;
+    private JComboBox<DISK_SCHEDULE> comboPolicy;
+    private JTextArea txtReadMonitor; 
+    private JComboBox<String> comboUsers;
+    private JTextField txtNewUser;
+    private JButton btnCreateUser;
+    private JTextField txtCreateName;
+    private JComboBox<String> comboLocation; 
+    private JSpinner spinnerSize;
+    private JButton btnCreate;
+    private JButton btnCreate10; 
+    private JRadioButton radioFile, radioFolder;
+    private javax.swing.ButtonGroup btnGroupCreate;
+    private JRadioButton radioRead, radioModify, radioDelete;
+    private javax.swing.ButtonGroup btnGroupOperate;
+    private JRadioButton radioOpTargetFile, radioOpTargetFolder; 
+    private javax.swing.ButtonGroup btnGroupOpTarget;
+    private JComboBox<String> comboOpLocation; 
+    private JComboBox<String> comboOpItem;     
+    private JButton btnOperate;
+    private JTextField txtNewName;
+    private JLabel lblNewName; 
+    private JButton btnSaveCSV; 
+    
     public GUI() {
-        initComponents();
-        setupTree();
-        setupNewComponents();
+        userList = new ArrayList<>();
+        User admin = new User("admin", true); 
+        userList.add(admin);
+        currentUser = admin;
+        showStartupDialog();
+        initComponentsCustom();
+        setupListeners(); 
+        setupModels();
+        updateCombos();
+        refreshUserCombo();
+        updateOperationsUI();
+        startRefresher();
     }
-
-    private void setupTree() {
-        rootNode = new DefaultMutableTreeNode("Root");
-        treeModel = new DefaultTreeModel(rootNode);
-        jTree1.setModel(treeModel);
-        updateLocationComboBox();
-        updateTargetFileComboBox();
-    }
-
-    private void setupNewComponents() {
-        jComboBoxCurrentUser.addItem("Admin");
-        jComboBoxCurrentUser.addItem("Miguel");
-        jComboBoxCurrentUser.addItem("Vincenzo");
-        jComboBoxCurrentUser.addActionListener(e -> checkAdminPermissions());
-        String[] fileColumns = {"Nombre", "Bloques", "Dir. Bloque", "Proceso Creador", "Usuario Creador"};
-        tableModelFiles = new DefaultTableModel(fileColumns, 0) {
-            @Override
-            public boolean isCellEditable(int row, int column) {
-                return false;
-            }
-        };
-        jTableFiles.setModel(tableModelFiles);
-        int diskCols = 10;
-        int diskRows = 10;
-        tableModelDiskView = new DefaultTableModel(diskRows, diskCols) {
-            @Override
-            public boolean isCellEditable(int row, int column) {
-                return false;
-            }
-        };
-        jTableDiskView.setModel(tableModelDiskView);
-        jTableDiskView.setTableHeader(null);
-        String[] bufferColumns = {"Archivo", "Dirección Bloque", "Info Adicional"};
-        tableModelBuffer = new DefaultTableModel(bufferColumns, 0) {
-            @Override
-            public boolean isCellEditable(int row, int column) {
-                return false;
-            }
-        };
-        jTableBuffer.setModel(tableModelBuffer); 
-        ActionListener createPanelListener = e -> updateCreatePanelState();
-        jRadioButtonArchivo.addActionListener(createPanelListener);
-        jRadioButtonCarpeta.addActionListener(createPanelListener);
-        updateOperatePanelState();
-        updateCreatePanelState();
-        checkAdminPermissions();
-    }
-
-    private void updateLocationComboBox() {
-        jComboBoxLocation.removeAllItems();
-        addNodesToComboBox(rootNode, true);
-    }
-
-    private void updateTargetFileComboBox() {
-        jComboBoxTargetFile.removeAllItems();
-        addNodesToComboBox(rootNode, false);
-    }
-
-    /**
-     * Método recursivo para poblar los ComboBox
-     * @param node El nodo desde donde empezar
-     * @param foldersOnly True si solo queremos carpetas, False si solo queremos archivos
-     */
-    private void addNodesToComboBox(DefaultMutableTreeNode node, boolean foldersOnly) {
-        if (foldersOnly && node.getAllowsChildren()) {
-            if (jComboBoxLocation != null) {
-                jComboBoxLocation.addItem(node);
-            }
-        } else if (!foldersOnly && !node.getAllowsChildren() && node != rootNode) {
-            if (jComboBoxTargetFile != null) {
-                jComboBoxTargetFile.addItem(node);
-            }
-        }
-        Enumeration<?> children = node.children();
-        while (children.hasMoreElements()) {
-            DefaultMutableTreeNode childNode = (DefaultMutableTreeNode) children.nextElement();
-            addNodesToComboBox(childNode, foldersOnly);
-        }
-    }
-
-    private void checkAdminPermissions() {
-        boolean isAdmin = "Admin".equals(jComboBoxCurrentUser.getSelectedItem());   
-        jRadioButtonModify.setEnabled(isAdmin);
-        jRadioButtonDelete.setEnabled(isAdmin);
-        if (!isAdmin && (jRadioButtonModify.isSelected() || jRadioButtonDelete.isSelected())) {
-            jRadioButtonRead.setSelected(true);
-            updateOperatePanelState();
-        }
-        jRadioButtonCarpeta.setEnabled(isAdmin);
-        if (!isAdmin && jRadioButtonCarpeta.isSelected()) {
-            jRadioButtonArchivo.setSelected(true);
-            updateCreatePanelState();
-        }
-    }
- 
-    private void updateCreatePanelState() {
-        boolean isFile = jRadioButtonArchivo.isSelected();
-        jLabelBlockSize.setEnabled(isFile);
-        jTextFieldBlockSize.setEnabled(isFile);
-    }
-
-    private void updateOperatePanelState() {
-        if (jRadioButtonModify.isSelected()) {
-            jLabelTargetFile.setEnabled(true);
-            jComboBoxTargetFile.setEnabled(true);
-            jLabelFileName_Modify.setEnabled(true);
-            jTextFieldFileName_Modify.setEnabled(true);
-        } else {
-            jLabelTargetFile.setEnabled(true);
-            jComboBoxTargetFile.setEnabled(true);
-            jLabelFileName_Modify.setEnabled(false);
-            jTextFieldFileName_Modify.setEnabled(false);
+    
+    private void refreshUserCombo() {
+        if (comboUsers != null) {
+            comboUsers.removeAllItems();
+            for(User u : userList) comboUsers.addItem(u.getName());
+            comboUsers.setSelectedItem(currentUser.getName());
         }
     }
     
-    private void updateFileNameInTable(String oldName, String newName) {
-        for (int i = 0; i < tableModelFiles.getRowCount(); i++) {
-            if (tableModelFiles.getValueAt(i, 0).equals(oldName)) {
-                tableModelFiles.setValueAt(newName, i, 0);
-                break;
+    private void showStartupDialog() {
+        JPanel panelStart = new JPanel(new GridLayout(0, 1, 10, 10));
+        JLabel lblTitle = new JLabel("Configuración Inicial");
+        lblTitle.setFont(new java.awt.Font("Segoe UI", 1, 14));
+        lblTitle.setHorizontalAlignment(JLabel.CENTER);
+        
+        JPanel panelNew = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        JLabel lblSize = new JLabel("Tamaño Disco: ");
+        JSpinner spinSize = new JSpinner(new SpinnerNumberModel(512, 10, 10000, 1));
+        panelNew.add(lblSize);
+        panelNew.add(spinSize);
+        
+        JButton btnLoad = new JButton("Cargar CSV...");
+        btnLoad.addActionListener(e -> {
+            java.awt.Window w = SwingUtilities.getWindowAncestor(btnLoad);
+            if (w != null) w.dispose();
+            loadFromCSV(); 
+        });
+
+        panelStart.add(lblTitle);
+        panelStart.add(new JLabel("Opción A: Nuevo Sistema"));
+        panelStart.add(panelNew);
+        panelStart.add(new javax.swing.JSeparator());
+        panelStart.add(new JLabel("Opción B: Cargar Respaldo"));
+        panelStart.add(btnLoad);
+
+        int result = JOptionPane.showConfirmDialog(this, panelStart, "Sistema de Archivos", 
+                JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+        
+        if (fileSystem == null) {
+            int size = 512;
+            if (result == JOptionPane.OK_OPTION) {
+                try {
+                    spinSize.commitEdit();
+                } catch (Exception e) {}
+                size = (Integer) spinSize.getValue();
+            }
+            fileSystem = new FileSystem(size);
+            fileSystem.boot();
+        }
+    }
+
+    private void initComponentsCustom() {
+        setLayout(new BorderLayout(5, 5)); 
+        JTabbedPane tabbedPane = new JTabbedPane();
+        JPanel panelDisk = new JPanel(new BorderLayout());
+        panelDisk.setBorder(BorderFactory.createEmptyBorder(5,5,5,5));
+        
+        jTableDiskView = new JTable();
+        JScrollPane scrollDisk = new JScrollPane(jTableDiskView);
+        scrollDisk.setBorder(BorderFactory.createTitledBorder("Mapa de Bloques (SD)"));
+        panelDisk.add(scrollDisk, BorderLayout.CENTER);
+        
+        JPanel panelDiskInfo = new JPanel();
+        panelDiskInfo.add(new JLabel("Estado: En Línea | Espacio Libre: "));
+        lblFreeSpace = new JLabel("Calculando...");
+        panelDiskInfo.add(lblFreeSpace);
+        panelDisk.add(panelDiskInfo, BorderLayout.SOUTH);
+
+        jTree1 = new JTree();
+        JScrollPane scrollTree = new JScrollPane(jTree1);
+        scrollTree.setBorder(BorderFactory.createTitledBorder("Árbol de Directorios"));
+        scrollTree.setMinimumSize(new Dimension(150, 100));
+        
+        jTableFiles = new JTable();
+        JScrollPane scrollFiles = new JScrollPane(jTableFiles);
+        scrollFiles.setBorder(BorderFactory.createTitledBorder("Lista Global de Archivos"));
+        
+        JSplitPane splitFiles = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, scrollTree, scrollFiles);
+        splitFiles.setDividerLocation(180); 
+        splitFiles.setResizeWeight(0.3);
+        splitFiles.setOneTouchExpandable(true);
+
+        JPanel panelOptions = new JPanel(new BorderLayout());
+        panelOptions.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
+        
+        JTextArea txtInfoOptions = new JTextArea();
+        txtInfoOptions.setText("OPCIONES DEL SISTEMA\n\n"
+                + "Utilice el botón inferior para guardar un reporte completo del estado actual.\n"
+                + "El reporte incluirá:\n"
+                + "1. Estado del Disco y Políticas.\n"
+                + "2. Estructura completa de archivos y carpetas.\n"
+                + "3. Bitácora (Log) de operaciones realizadas.");
+        txtInfoOptions.setEditable(false);
+        txtInfoOptions.setOpaque(false);
+        txtInfoOptions.setFont(new java.awt.Font("Segoe UI", 0, 14));
+        panelOptions.add(txtInfoOptions, BorderLayout.CENTER);
+        
+        JPanel panelBottomRight = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        btnSaveCSV = new JButton("Guardar Reporte (CSV)");
+        btnSaveCSV.addActionListener(e -> actionSave());
+        btnSaveCSV.setBackground(new Color(220, 255, 220)); 
+        
+        panelBottomRight.add(btnSaveCSV);
+        panelOptions.add(panelBottomRight, BorderLayout.SOUTH);
+        
+        tabbedPane.addTab("Disco (SD)", panelDisk);
+        tabbedPane.addTab("Explorador", splitFiles);
+        tabbedPane.addTab("Opciones", panelOptions); 
+        
+        add(tabbedPane, BorderLayout.CENTER);
+        JPanel panelLeftContainer = new JPanel(new GridBagLayout());
+        panelLeftContainer.setBorder(BorderFactory.createEmptyBorder(2, 2, 2, 2));
+        panelLeftContainer.setPreferredSize(new Dimension(260, 0)); 
+        
+        GridBagConstraints gbcLSpacer = new GridBagConstraints();
+        gbcLSpacer.gridx = 0; gbcLSpacer.gridy = 0;
+        gbcLSpacer.weighty = 0.05; 
+        gbcLSpacer.fill = GridBagConstraints.BOTH;
+        panelLeftContainer.add(Box.createVerticalStrut(30), gbcLSpacer);
+ 
+        JPanel panelPolicies = createCompactPanel("Políticas de Disco");
+        comboPolicy = new JComboBox<>(DISK_SCHEDULE.values());
+        comboPolicy.addActionListener(e -> actionChangePolicy());
+        lblHeadPosition = new JLabel("Cabezal: Sector 0");
+        lblHeadPosition.setFont(new java.awt.Font("Monospaced", 1, 12));
+        lblHeadPosition.setForeground(new Color(0, 100, 200));
+
+        addCompactRow(panelPolicies, new JLabel("Algoritmo:"));
+        addCompactRow(panelPolicies, comboPolicy);
+        addCompactRow(panelPolicies, new JLabel("Monitoreo:"));
+        addCompactRow(panelPolicies, lblHeadPosition);
+        
+        GridBagConstraints gbcLeftPol = new GridBagConstraints();
+        gbcLeftPol.gridx = 0; gbcLeftPol.gridy = 1;
+        gbcLeftPol.fill = GridBagConstraints.HORIZONTAL;
+        gbcLeftPol.weightx = 1.0;
+        gbcLeftPol.insets = new Insets(0, 0, 10, 0);
+        gbcLeftPol.anchor = GridBagConstraints.NORTH;
+        panelLeftContainer.add(panelPolicies, gbcLeftPol);
+ 
+        JPanel panelReadMonitor = new JPanel(new BorderLayout());
+        panelReadMonitor.setBorder(BorderFactory.createTitledBorder("Log de Operaciones"));
+        
+        txtReadMonitor = new JTextArea();
+        txtReadMonitor.setEditable(false);
+        txtReadMonitor.setFont(new java.awt.Font("Monospaced", 0, 11));
+        txtReadMonitor.setBackground(new Color(245, 245, 245));
+        txtReadMonitor.setText("=== BITÁCORA DEL SISTEMA ===\n");
+        txtReadMonitor.setLineWrap(true);
+        txtReadMonitor.setWrapStyleWord(true);
+        
+        JScrollPane scrollMonitor = new JScrollPane(txtReadMonitor);
+        scrollMonitor.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_ALWAYS);
+        panelReadMonitor.add(scrollMonitor, BorderLayout.CENTER);
+        
+        GridBagConstraints gbcLeftMon = new GridBagConstraints();
+        gbcLeftMon.gridx = 0; gbcLeftMon.gridy = 2;
+        gbcLeftMon.fill = GridBagConstraints.BOTH; 
+        gbcLeftMon.weightx = 1.0;
+        gbcLeftMon.weighty = 1.0; 
+        panelLeftContainer.add(panelReadMonitor, gbcLeftMon);
+
+        add(panelLeftContainer, BorderLayout.WEST);
+
+        JPanel panelRightContainer = new JPanel(new GridBagLayout());
+        panelRightContainer.setBorder(BorderFactory.createEmptyBorder(2, 2, 2, 2));
+        
+        GridBagConstraints gbcRSpacer = new GridBagConstraints();
+        gbcRSpacer.gridx = 0; gbcRSpacer.gridy = 0;
+        gbcRSpacer.weighty = 0.05; 
+        gbcRSpacer.fill = GridBagConstraints.BOTH;
+        panelRightContainer.add(Box.createVerticalStrut(30), gbcRSpacer);
+
+        GridBagConstraints gbcMain = new GridBagConstraints();
+        gbcMain.gridx = 0;
+        gbcMain.gridy = GridBagConstraints.RELATIVE;
+        gbcMain.fill = GridBagConstraints.HORIZONTAL;
+        gbcMain.weightx = 1.0;
+        gbcMain.insets = new Insets(0, 0, 20, 0); 
+        gbcMain.anchor = GridBagConstraints.NORTH;
+
+        JPanel panelUsers = createCompactPanel("Gestión de Usuarios");
+        comboUsers = new JComboBox<>();
+        comboUsers.addItem("admin");
+        comboUsers.addActionListener(e -> actionSelectUser());
+        txtNewUser = new JTextField("");
+        btnCreateUser = new JButton("Crear Usuario");
+        btnCreateUser.addActionListener(e -> actionCreateUser());
+        
+        addCompactRow(panelUsers, new JLabel("Usuario Activo:"));
+        addCompactRow(panelUsers, comboUsers);
+        addCompactRow(panelUsers, new JLabel("Nuevo Usuario:"));
+        addCompactRow(panelUsers, txtNewUser);
+        addCompactRow(panelUsers, btnCreateUser);
+
+        JPanel panelCreate = createCompactPanel("Crear Archivo/Carpeta");
+        btnGroupCreate = new javax.swing.ButtonGroup();
+        radioFile = new JRadioButton("Archivo", true);
+        radioFolder = new JRadioButton("Carpeta");
+        btnGroupCreate.add(radioFile); btnGroupCreate.add(radioFolder);
+        
+        JPanel typePanel = new JPanel(new GridLayout(1, 2));
+        typePanel.add(radioFile); typePanel.add(radioFolder);
+        
+        txtCreateName = new JTextField("NuevoDoc");
+        comboLocation = new JComboBox<>(); 
+        spinnerSize = new JSpinner(new SpinnerNumberModel(1, 1, 100, 1)); 
+        btnCreate = new JButton("Crear Elemento");
+        btnCreate.addActionListener(e -> actionCreate());
+        btnCreate10 = new JButton("Crear 10 (Auto)");
+        btnCreate10.setBackground(new Color(230, 240, 255));
+        btnCreate10.addActionListener(e -> actionCreateBatch10());
+
+        addCompactRow(panelCreate, new JLabel("Tipo:"));
+        addCompactRow(panelCreate, typePanel);
+        addCompactRow(panelCreate, new JLabel("Nombre:"));
+        addCompactRow(panelCreate, txtCreateName);
+        addCompactRow(panelCreate, new JLabel("Tamaño (Bloques):"));
+        addCompactRow(panelCreate, spinnerSize);
+        addCompactRow(panelCreate, new JLabel("Carpeta Padre:"));
+        addCompactRow(panelCreate, comboLocation); 
+        addCompactRow(panelCreate, btnCreate);
+        addCompactRow(panelCreate, btnCreate10); 
+
+        JPanel panelOperate = createCompactPanel("Operaciones");
+        btnGroupOperate = new javax.swing.ButtonGroup();
+        radioRead = new JRadioButton("Leer", true);
+        radioModify = new JRadioButton("Modif");
+        radioDelete = new JRadioButton("Elim");
+        btnGroupOperate.add(radioRead); btnGroupOperate.add(radioModify); btnGroupOperate.add(radioDelete);
+        
+        JPanel opModePanel = new JPanel(new GridLayout(1, 3));
+        opModePanel.add(radioRead); opModePanel.add(radioModify); opModePanel.add(radioDelete);
+        
+        btnGroupOpTarget = new javax.swing.ButtonGroup();
+        radioOpTargetFile = new JRadioButton("Archivo", true);
+        radioOpTargetFolder = new JRadioButton("Carpeta");
+        btnGroupOpTarget.add(radioOpTargetFile); btnGroupOpTarget.add(radioOpTargetFolder);
+        
+        JPanel opTargetTypePanel = new JPanel(new GridLayout(1, 2));
+        opTargetTypePanel.add(radioOpTargetFile); opTargetTypePanel.add(radioOpTargetFolder);
+        
+        comboOpLocation = new JComboBox<>(); 
+        comboOpItem = new JComboBox<>();     
+        txtNewName = new JTextField("");
+        lblNewName = new JLabel("Nuevo Nombre:");
+        btnOperate = new JButton("Ejecutar Acción");
+        btnOperate.addActionListener(e -> actionOperate());
+
+        addCompactRow(panelOperate, new JLabel("Modo:"));
+        addCompactRow(panelOperate, opModePanel);
+        addCompactRow(panelOperate, new JLabel("Objetivo:"));
+        addCompactRow(panelOperate, opTargetTypePanel);
+        addCompactRow(panelOperate, new JLabel("Ubicación:"));
+        addCompactRow(panelOperate, comboOpLocation);
+        addCompactRow(panelOperate, new JLabel("Item:"));
+        addCompactRow(panelOperate, comboOpItem);
+        addCompactRow(panelOperate, lblNewName);
+        addCompactRow(panelOperate, txtNewName); 
+        addCompactRow(panelOperate, btnOperate); 
+
+        panelRightContainer.add(panelUsers, gbcMain);
+        panelRightContainer.add(panelCreate, gbcMain);
+        panelRightContainer.add(panelOperate, gbcMain);
+        
+        GridBagConstraints gbcRFill = new GridBagConstraints();
+        gbcRFill.gridx = 0; gbcRFill.weighty = 0.95; 
+        gbcRFill.fill = GridBagConstraints.VERTICAL;
+        panelRightContainer.add(new JPanel(), gbcRFill);
+        
+        JScrollPane scrollRight = new JScrollPane(panelRightContainer);
+        scrollRight.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+        scrollRight.setBorder(null); 
+        scrollRight.setPreferredSize(new Dimension(300, 0)); 
+        
+        add(scrollRight, BorderLayout.EAST);
+    }
+    
+    private JPanel createCompactPanel(String title) {
+        JPanel p = new JPanel(new GridBagLayout());
+        p.setBorder(BorderFactory.createTitledBorder(title));
+        return p;
+    }
+    
+    private void addCompactRow(JPanel panel, JComponent comp) {
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.gridx = 0; gbc.gridy = GridBagConstraints.RELATIVE;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.weightx = 1.0;
+        gbc.insets = new Insets(1, 2, 1, 2); 
+        panel.add(comp, gbc);
+    }
+
+    private void loadFromCSV() {
+        JFileChooser fileChooser = new JFileChooser();
+        fileChooser.setDialogTitle("Cargar Reporte CSV");
+        fileChooser.setFileFilter(new FileNameExtensionFilter("Archivos CSV", "csv"));
+        
+        if (fileChooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+            java.io.File file = fileChooser.getSelectedFile();
+            try (BufferedReader br = new BufferedReader(new FileReader(file))) {
+                
+                String line;
+                int diskSize = 512; 
+                String savedLog = "";
+                boolean readingLog = false;
+                ArrayList<String[]> fileLines = new ArrayList<>();
+                
+                while ((line = br.readLine()) != null) {
+                    line = line.trim();
+                    if (line.isEmpty()) continue;
+                    
+                    if (line.startsWith("=== LOG")) {
+                        readingLog = true;
+                        continue;
+                    }
+                    if (readingLog) {
+                        savedLog += line + "\n";
+                        continue;
+                    }
+                    if (line.startsWith("Espacio Libre")) {
+                        diskSize = 2048; 
+                    }
+                    
+                    if (line.contains(",")) {
+                        String[] parts = line.split(",");
+                        if (parts.length >= 6 && isNumeric(parts[4])) {
+                            fileLines.add(parts);
+                        }
+                    }
+                }
+                
+                if(refreshTimer != null) refreshTimer.stop();
+                
+                this.fileSystem = new FileSystem(diskSize);
+                this.fileSystem.boot();
+                
+                userList.clear();
+                userList.add(new User("admin", true)); 
+                currentUser = userList.get(0); 
+                
+                fileLines.sort((a, b) -> a[0].length() - b[0].length());
+                
+                for (String[] parts : fileLines) {
+                    try {
+                        String path = parts[0].trim();
+                        String name = parts[1].trim();
+                        String type = parts[2].trim();
+                        String ownerStr = parts[3].trim();
+                        int size = Integer.parseInt(parts[4].trim());
+                        String dirStr = parts[5].trim();
+                        int startDir = (dirStr.equals("-") || dirStr.isEmpty()) ? -1 : Integer.parseInt(dirStr);
+                        
+                        Folder parent = findFolderByPath(path);
+                        if (parent == null) parent = fileSystem.getDisk().getRoot();
+                        
+                        User u = findUserByName(ownerStr);
+                        if (u == null) {
+                            u = new User(ownerStr, false);
+                            userList.add(u);
+                        }
+                        
+                        if (type.equalsIgnoreCase("Carpeta")) {
+                            Folder f = new Folder(name, u, parent);
+                            parent.saveElement(f);
+                        } else {
+                            restoreFileDirectly(name, u, size, parent, startDir);
+                        }
+                    } catch (Exception e) {
+                        System.out.println("Skipping line: " + e.getMessage());
+                    }
+                }
+                
+                if (txtReadMonitor != null) {
+                    txtReadMonitor.setText(savedLog);
+                    refreshUserCombo();
+                    setupModels(); 
+                }
+                
+                if(refreshTimer != null) refreshTimer.start();
+                
+                JOptionPane.showMessageDialog(null, "Sistema restaurado correctamente.");
+                
+            } catch (Exception e) {
+                e.printStackTrace();
+                JOptionPane.showMessageDialog(null, "Error crítico cargando CSV: " + e.getMessage());
+                fileSystem = new FileSystem(512);
+                fileSystem.boot();
+                if(refreshTimer != null) refreshTimer.start();
+            }
+        }
+    }
+    
+    private boolean isNumeric(String str) {
+        try {
+            Integer.parseInt(str.trim());
+            return true;
+        } catch (NumberFormatException e) {
+            return false;
+        }
+    }
+
+    private void restoreFileDirectly(String name, User owner, int size, Folder parent, int startDir) {
+        OS_Structures.File f = new OS_Structures.File(name, owner, size, parent);
+        parent.saveElement(f);
+        
+        if (startDir >= 0) {
+            Block[] memory = fileSystem.getDisk().getMemory();
+            if (startDir < memory.length) {
+                f.setHeadDir(memory[startDir]);
+            }
+            Block prev = null;
+            for (int i = 0; i < size; i++) {
+                int targetIdx = startDir + i;
+                if (targetIdx < memory.length) {
+                    Block current = memory[targetIdx];
+                    current.fillBlock(); 
+                    if (prev != null) prev.setNext(current);
+                    prev = current;
+                }
+            }
+        }
+    }
+    
+    private Folder findFolderByPath(String path) {
+        if (path.equals("ROOT") || path.isEmpty()) return fileSystem.getDisk().getRoot();
+        String[] parts = path.split("/");
+        Folder current = fileSystem.getDisk().getRoot();
+        for (int i = 1; i < parts.length; i++) {
+            String folderName = parts[i];
+            DiskElement de = current.getContents().getValueOfKey(folderName);
+            if (de != null && !de.isFile()) {
+                current = (Folder) de;
+            } else {
+                return current; 
+            }
+        }
+        return current;
+    }
+    
+    private User findUserByName(String name) {
+        for(User u : userList) if(u.getName().equals(name)) return u;
+        return null;
+    }
+
+    private void actionSave() {
+        JFileChooser fileChooser = new JFileChooser();
+        fileChooser.setDialogTitle("Guardar Reporte de Sistema");
+        fileChooser.setFileFilter(new FileNameExtensionFilter("Archivos CSV", "csv"));
+        
+        int userSelection = fileChooser.showSaveDialog(this);
+        
+        if (userSelection == JFileChooser.APPROVE_OPTION) {
+            java.io.File fileToSave = fileChooser.getSelectedFile();
+            if (!fileToSave.getAbsolutePath().toLowerCase().endsWith(".csv")) {
+                fileToSave = new java.io.File(fileToSave.getAbsolutePath() + ".csv");
+            }
+            
+            try (BufferedWriter writer = new BufferedWriter(new FileWriter(fileToSave))) {
+                SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+                
+                writer.write("=== ESTADO DEL SISTEMA ==="); writer.newLine();
+                writer.write("Fecha," + sdf.format(new Date())); writer.newLine();
+                writer.write("Usuario Actual," + currentUser.getName()); writer.newLine();
+                writer.write("Politica Disco," + comboPolicy.getSelectedItem()); writer.newLine();
+                writer.write("Espacio Libre," + fileSystem.getDisk().getFreeSpace()); writer.newLine();
+                writer.newLine();
+                
+                writer.write("=== SISTEMA DE ARCHIVOS ==="); writer.newLine();
+                writer.write("RutaPadre,Nombre,Tipo,Dueño,Tamaño,DirInicio"); writer.newLine();
+                writeFolderToCSV(writer, fileSystem.getDisk().getRoot(), "ROOT");
+                writer.newLine();
+                
+                writer.write("=== LOG DE OPERACIONES ==="); writer.newLine();
+                writer.write(txtReadMonitor.getText());
+                
+                JOptionPane.showMessageDialog(this, "Guardado en:\n" + fileToSave.getName());
+                
+            } catch (IOException ex) {
+                JOptionPane.showMessageDialog(this, "Error al guardar: " + ex.getMessage());
+            }
+        }
+    }
+    
+    private void writeFolderToCSV(BufferedWriter writer, Folder current, String currentPath) throws IOException {
+        if (current == null) return;
+        List<DiskElement> contents = current.getContents().getValues();
+        if (contents == null) return;
+        
+        for (DiskElement de : contents) {
+            String type = de.isFile() ? "Archivo" : "Carpeta";
+            String owner = (de.getOwner() != null) ? de.getOwner().getName() : "Sys";
+            String size = "0";
+            String startDir = "-";
+            
+            if (de.isFile()) {
+                OS_Structures.File f = (OS_Structures.File) de;
+                size = String.valueOf(f.getSize());
+                startDir = String.valueOf(f.getFileDir());
+            }
+            
+            writer.write(currentPath + "," + de.getName() + "," + type + "," + owner + "," + size + "," + startDir);
+            writer.newLine();
+            
+            if (!de.isFile()) {
+                writeFolderToCSV(writer, (Folder) de, currentPath + "/" + de.getName());
             }
         }
     }
 
-    private void deleteFileNameFromTable(String name) {
-        for (int i = 0; i < tableModelFiles.getRowCount(); i++) {
-            if (tableModelFiles.getValueAt(i, 0).equals(name)) {
-                tableModelFiles.removeRow(i);
-                break;
+    private void logToMonitor(String message) {
+        SimpleDateFormat sdf = new SimpleDateFormat("HH:mm:ss");
+        String time = sdf.format(new Date());
+        
+        SwingUtilities.invokeLater(() -> {
+            if (txtReadMonitor != null) {
+                txtReadMonitor.append("[" + time + "] " + message + "\n");
+                txtReadMonitor.append("----------------------------\n");
+                txtReadMonitor.setCaretPosition(txtReadMonitor.getDocument().getLength());
             }
+        });
+    }
+
+    private void actionChangePolicy() {
+        if (!currentUser.isAdmin()) {
+            JOptionPane.showMessageDialog(this, "Solo el administrador puede cambiar las políticas.");
+            return;
         }
+        DISK_SCHEDULE selected = (DISK_SCHEDULE) comboPolicy.getSelectedItem();
+        logToMonitor("Política cambiada a: " + selected);
     }
 
-    public void updateProcessQueue(String queueName, String content) {
-        switch (queueName.toLowerCase()) {
-            case "nuevo":
-                jTextAreaNew.setText(content);
-                break;
-            case "listo":
-                jTextAreaReady.setText(content);
-                break;
-            case "ejecutando":
-                jTextAreaRunning.setText(content);
-                break;
-            case "bloqueado":
-                jTextAreaBlocked.setText(content);
-                break;
-            case "terminado":
-                jTextAreaFinished.setText(content);
-                break;
-        }
+    private void setupListeners() {
+        ActionListener typeListener = e -> {
+            spinnerSize.setEnabled(!radioFolder.isSelected());
+            btnCreate10.setEnabled(!radioFolder.isSelected());
+        };
+        radioFile.addActionListener(typeListener);
+        radioFolder.addActionListener(typeListener);
+        
+        ActionListener opTypeListener = e -> updateOpTargetItems();
+        radioOpTargetFile.addActionListener(opTypeListener);
+        radioOpTargetFolder.addActionListener(opTypeListener);
+        comboOpLocation.addActionListener(e -> updateOpTargetItems());
+        
+        ActionListener modeListener = e -> updateOperationsUI();
+        radioRead.addActionListener(modeListener);
+        radioModify.addActionListener(modeListener);
+        radioDelete.addActionListener(modeListener);
     }
-    public void updateCurrentIOProcess(String processInfo) {
-        jTextFieldCurrentIO.setText(processInfo);
-    } 
-    public void addFileToTable(Object[] rowData) {
-        tableModelFiles.addRow(rowData);
-    } 
-    public void refreshFileTable(/* Lista de archivos */) {
-        tableModelFiles.setRowCount(0);
-    }
-    public void updateDiskBlock(int row, int col, Object value) {
-        tableModelDiskView.setValueAt(value, row, col);
-    }
-    public void refreshBufferTable(/* Lista de bloques en buffer */) {
-        tableModelBuffer.setRowCount(0);
-    }
-
-    /**
-     * This method is called from within the constructor to initialize the form.
-     * WARNING: Do NOT modify this code. The content of this method is always
-     * regenerated by the Form Editor.
-     */
-    @SuppressWarnings("unchecked")
-    // <editor-fold defaultstate="collapsed" desc="Generated Code">//GEN-BEGIN:initComponents
-    private void initComponents() {
-        buttonGroupTipoProceso = new javax.swing.ButtonGroup();
-        buttonGroupCreateType = new javax.swing.ButtonGroup();
-        jLabel1 = new javax.swing.JLabel();
-        jScrollPaneTree = new javax.swing.JScrollPane();
-        jTree1 = new javax.swing.JTree();
-        jTabbedPaneMiddle = new javax.swing.JTabbedPane();
-        jPanelQueues = new javax.swing.JPanel();
-        jLabelNew = new javax.swing.JLabel();
-        jScrollPaneNew = new javax.swing.JScrollPane();
-        jTextAreaNew = new javax.swing.JTextArea();
-        jLabelReady = new javax.swing.JLabel();
-        jScrollPaneReady = new javax.swing.JScrollPane();
-        jTextAreaReady = new javax.swing.JTextArea();
-        jLabelRunning = new javax.swing.JLabel();
-        jScrollPaneRunning = new javax.swing.JScrollPane();
-        jTextAreaRunning = new javax.swing.JTextArea();
-        jLabelBlocked = new javax.swing.JLabel();
-        jScrollPaneBlocked = new javax.swing.JScrollPane();
-        jTextAreaBlocked = new javax.swing.JTextArea();
-        jLabelFinished = new javax.swing.JLabel();
-        jScrollPaneFinished = new javax.swing.JScrollPane();
-        jTextAreaFinished = new javax.swing.JTextArea();
-        jLabelCurrentIO = new javax.swing.JLabel();
-        jTextFieldCurrentIO = new javax.swing.JTextField();
-        jPanelFileTable = new javax.swing.JPanel();
-        jScrollPaneFiles = new javax.swing.JScrollPane();
-        jTableFiles = new javax.swing.JTable();
-        jPanelDiskView = new javax.swing.JPanel();
-        jScrollPaneDisk = new javax.swing.JScrollPane();
-        jTableDiskView = new javax.swing.JTable();
-        jPanelBuffer = new javax.swing.JPanel();
-        jScrollPaneBuffer = new javax.swing.JScrollPane();
-        jTableBuffer = new javax.swing.JTable();
-        jPanelRight = new javax.swing.JPanel();
-        jPanelUser = new javax.swing.JPanel();
-        jLabelCurrentUser = new javax.swing.JLabel();
-        jComboBoxCurrentUser = new javax.swing.JComboBox<>();
-        jLabelNewUser = new javax.swing.JLabel();
-        jTextFieldNewUser = new javax.swing.JTextField();
-        jButtonAddUser = new javax.swing.JButton();
-        jPanelCreateOperation = new javax.swing.JPanel();
-        jLabelLocation = new javax.swing.JLabel();
-        jComboBoxLocation = new javax.swing.JComboBox<>();
-        jLabelFileName_Create = new javax.swing.JLabel();
-        jTextFieldFileName_Create = new javax.swing.JTextField();
-        jLabelBlockSize = new javax.swing.JLabel();
-        jTextFieldBlockSize = new javax.swing.JTextField();
-        jButtonCreateFileProcess = new javax.swing.JButton();
-        jRadioButtonArchivo = new javax.swing.JRadioButton();
-        jRadioButtonCarpeta = new javax.swing.JRadioButton();
-        jPanelOperateOperation = new javax.swing.JPanel();
-        jLabelProcessType = new javax.swing.JLabel();
-        jRadioButtonRead = new javax.swing.JRadioButton();
-        jRadioButtonModify = new javax.swing.JRadioButton();
-        jRadioButtonDelete = new javax.swing.JRadioButton();
-        jLabelTargetFile = new javax.swing.JLabel();
-        jComboBoxTargetFile = new javax.swing.JComboBox<>();
-        jLabelFileName_Modify = new javax.swing.JLabel();
-        jTextFieldFileName_Modify = new javax.swing.JTextField();
-        jButtonOperateFileProcess = new javax.swing.JButton();
-        jLabel1.setText("JTree");
-        jScrollPaneTree.setViewportView(jTree1);
-        jLabelNew.setText("Nuevo:");
-        jTextAreaNew.setEditable(false);
-        jTextAreaNew.setColumns(20);
-        jTextAreaNew.setRows(3);
-        jScrollPaneNew.setViewportView(jTextAreaNew);
-        jLabelReady.setText("Listo:");
-        jTextAreaReady.setEditable(false);
-        jTextAreaReady.setColumns(20);
-        jTextAreaReady.setRows(3);
-        jScrollPaneReady.setViewportView(jTextAreaReady);
-        jLabelRunning.setText("Ejecutando:");
-        jTextAreaRunning.setEditable(false);
-        jTextAreaRunning.setColumns(20);
-        jTextAreaRunning.setRows(3);
-        jScrollPaneRunning.setViewportView(jTextAreaRunning);
-        jLabelBlocked.setText("Bloqueado:");
-        jTextAreaBlocked.setEditable(false);
-        jTextAreaBlocked.setColumns(20);
-        jTextAreaBlocked.setRows(3);
-        jScrollPaneBlocked.setViewportView(jTextAreaBlocked);
-        jLabelFinished.setText("Terminado:");
-        jTextAreaFinished.setEditable(false);
-        jTextAreaFinished.setColumns(20);
-        jTextAreaFinished.setRows(3);
-        jScrollPaneFinished.setViewportView(jTextAreaFinished);
-        jLabelCurrentIO.setFont(new java.awt.Font("Segoe UI", 1, 12)); // NOI18N
-        jLabelCurrentIO.setText("Operación E/S Actual:");
-        jTextFieldCurrentIO.setEditable(false);
-        javax.swing.GroupLayout jPanelQueuesLayout = new javax.swing.GroupLayout(jPanelQueues);
-        jPanelQueues.setLayout(jPanelQueuesLayout);
-        jPanelQueuesLayout.setHorizontalGroup(
-            jPanelQueuesLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(jPanelQueuesLayout.createSequentialGroup()
-                .addContainerGap()
-                .addGroup(jPanelQueuesLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                    .addComponent(jScrollPaneNew, javax.swing.GroupLayout.DEFAULT_SIZE, 472, Short.MAX_VALUE)
-                    .addComponent(jScrollPaneReady)
-                    .addComponent(jScrollPaneRunning)
-                    .addComponent(jScrollPaneBlocked)
-                    .addComponent(jScrollPaneFinished)
-                    .addGroup(jPanelQueuesLayout.createSequentialGroup()
-                        .addGroup(jPanelQueuesLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                            .addComponent(jLabelNew)
-                            .addComponent(jLabelReady)
-                            .addComponent(jLabelRunning)
-                            .addComponent(jLabelBlocked)
-                            .addComponent(jLabelFinished)
-                            .addGroup(jPanelQueuesLayout.createSequentialGroup()
-                                .addComponent(jLabelCurrentIO)
-                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                                .addComponent(jTextFieldCurrentIO, javax.swing.GroupLayout.PREFERRED_SIZE, 160, javax.swing.GroupLayout.PREFERRED_SIZE)))
-                        .addGap(0, 0, Short.MAX_VALUE)))
-                .addContainerGap())
-        );
-        jPanelQueuesLayout.setVerticalGroup(
-            jPanelQueuesLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(jPanelQueuesLayout.createSequentialGroup()
-                .addContainerGap()
-                .addComponent(jLabelNew)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jScrollPaneNew, javax.swing.GroupLayout.PREFERRED_SIZE, 60, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                .addComponent(jLabelReady)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jScrollPaneReady, javax.swing.GroupLayout.PREFERRED_SIZE, 60, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                .addComponent(jLabelRunning)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jScrollPaneRunning, javax.swing.GroupLayout.PREFERRED_SIZE, 60, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                .addComponent(jLabelBlocked)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jScrollPaneBlocked, javax.swing.GroupLayout.PREFERRED_SIZE, 60, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                .addComponent(jLabelFinished)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jScrollPaneFinished, javax.swing.GroupLayout.PREFERRED_SIZE, 60, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addGap(18, 18, 18)
-                .addGroup(jPanelQueuesLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                    .addComponent(jLabelCurrentIO)
-                    .addComponent(jTextFieldCurrentIO, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
-                .addContainerGap(112, Short.MAX_VALUE))
-        );
-        jTabbedPaneMiddle.addTab("Colas de Procesos", jPanelQueues);
-        jPanelFileTable.setLayout(new java.awt.BorderLayout());
-        jTableFiles.setModel(new javax.swing.table.DefaultTableModel(
-            new Object [][] {
-
-            },
-            new String [] {
-
+    
+    private void updateOperationsUI() {
+        boolean isAdmin = currentUser.isAdmin();
+        boolean isModify = radioModify.isSelected();
+        
+        if (!isAdmin) {
+            radioModify.setEnabled(false);
+            radioDelete.setEnabled(false);
+            comboPolicy.setEnabled(false);
+            if (radioModify.isSelected() || radioDelete.isSelected()) {
+                radioRead.setSelected(true);
+                isModify = false; 
             }
-        ));
-        jScrollPaneFiles.setViewportView(jTableFiles);
-        jPanelFileTable.add(jScrollPaneFiles, java.awt.BorderLayout.CENTER);
-        jTabbedPaneMiddle.addTab("Archivos", jPanelFileTable);
-        jPanelDiskView.setLayout(new java.awt.BorderLayout());
-        jTableDiskView.setModel(new javax.swing.table.DefaultTableModel(
-            new Object [][] {
-            },
-            new String [] {
-            }
-        ));
-        jScrollPaneDisk.setViewportView(jTableDiskView);
-        jPanelDiskView.add(jScrollPaneDisk, java.awt.BorderLayout.CENTER);
-        jTabbedPaneMiddle.addTab("Disco", jPanelDiskView);
-        jPanelBuffer.setLayout(new java.awt.BorderLayout());
-        jTableBuffer.setModel(new javax.swing.table.DefaultTableModel(
-            new Object [][] {
-            },
-            new String [] {
-            }
-        ));
-        jScrollPaneBuffer.setViewportView(jTableBuffer);
-        jPanelBuffer.add(jScrollPaneBuffer, java.awt.BorderLayout.CENTER);
-        jTabbedPaneMiddle.addTab("Buffer", jPanelBuffer);
-        jPanelUser.setBorder(javax.swing.BorderFactory.createTitledBorder("Gestión de Usuarios"));
-        jLabelCurrentUser.setText("Usuario Actual:");
-        jLabelNewUser.setText("Agregar Nuevo Usuario:");
-        jButtonAddUser.setText("Agregar");
-        jButtonAddUser.addActionListener(new java.awt.event.ActionListener() {
-            public void actionPerformed(java.awt.event.ActionEvent evt) {
-                jButtonAddUserActionPerformed(evt);
-            }
-        });
-        javax.swing.GroupLayout jPanelUserLayout = new javax.swing.GroupLayout(jPanelUser);
-        jPanelUser.setLayout(jPanelUserLayout);
-        jPanelUserLayout.setHorizontalGroup(
-            jPanelUserLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(jPanelUserLayout.createSequentialGroup()
-                .addContainerGap()
-                .addGroup(jPanelUserLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                    .addComponent(jComboBoxCurrentUser, 0, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                    .addGroup(jPanelUserLayout.createSequentialGroup()
-                        .addComponent(jTextFieldNewUser)
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addComponent(jButtonAddUser))
-                    .addGroup(jPanelUserLayout.createSequentialGroup()
-                        .addGroup(jPanelUserLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                            .addComponent(jLabelCurrentUser)
-                            .addComponent(jLabelNewUser))
-                        .addGap(0, 0, Short.MAX_VALUE)))
-                .addContainerGap())
-        );
-        jPanelUserLayout.setVerticalGroup(
-            jPanelUserLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(jPanelUserLayout.createSequentialGroup()
-                .addContainerGap()
-                .addComponent(jLabelCurrentUser)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jComboBoxCurrentUser, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                .addComponent(jLabelNewUser)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addGroup(jPanelUserLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                    .addComponent(jTextFieldNewUser, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                    .addComponent(jButtonAddUser))
-                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
-        );
-        jPanelCreateOperation.setBorder(javax.swing.BorderFactory.createTitledBorder("Crear (Archivo/Carpeta)"));
-        jLabelLocation.setText("Ubicación:");
-        jLabelFileName_Create.setText("Nombre Archivo/Carpeta:");
-        jLabelBlockSize.setText("Tamaño en Bloques:");
-        jButtonCreateFileProcess.setText("Crear Proceso (Crear)");
-        jButtonCreateFileProcess.addActionListener(new java.awt.event.ActionListener() {
-            public void actionPerformed(java.awt.event.ActionEvent evt) {
-                jButtonCreateFileProcessActionPerformed(evt);
-            }
-        });
-        buttonGroupCreateType.add(jRadioButtonArchivo);
-        jRadioButtonArchivo.setSelected(true);
-        jRadioButtonArchivo.setText("Archivo");
-        buttonGroupCreateType.add(jRadioButtonCarpeta);
-        jRadioButtonCarpeta.setText("Carpeta");
-        javax.swing.GroupLayout jPanelCreateOperationLayout = new javax.swing.GroupLayout(jPanelCreateOperation);
-        jPanelCreateOperation.setLayout(jPanelCreateOperationLayout);
-        jPanelCreateOperationLayout.setHorizontalGroup(
-            jPanelCreateOperationLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(jPanelCreateOperationLayout.createSequentialGroup()
-                .addContainerGap()
-                .addGroup(jPanelCreateOperationLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                    .addComponent(jComboBoxLocation, 0, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                    .addComponent(jTextFieldFileName_Create)
-                    .addComponent(jTextFieldBlockSize)
-                    .addComponent(jButtonCreateFileProcess, javax.swing.GroupLayout.DEFAULT_SIZE, 236, Short.MAX_VALUE)
-                    .addGroup(jPanelCreateOperationLayout.createSequentialGroup()
-                        .addGroup(jPanelCreateOperationLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                            .addComponent(jLabelFileName_Create)
-                            .addComponent(jLabelBlockSize)
-                            .addComponent(jLabelLocation, javax.swing.GroupLayout.PREFERRED_SIZE, 163, javax.swing.GroupLayout.PREFERRED_SIZE)
-                            .addGroup(jPanelCreateOperationLayout.createSequentialGroup()
-                                .addComponent(jRadioButtonArchivo)
-                                .addGap(18, 18, 18)
-                                .addComponent(jRadioButtonCarpeta)))
-                        .addGap(0, 0, Short.MAX_VALUE)))
-                .addContainerGap())
-        );
-        jPanelCreateOperationLayout.setVerticalGroup(
-            jPanelCreateOperationLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(jPanelCreateOperationLayout.createSequentialGroup()
-                .addContainerGap()
-                .addComponent(jLabelLocation)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jComboBoxLocation, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                .addGroup(jPanelCreateOperationLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                    .addComponent(jRadioButtonArchivo)
-                    .addComponent(jRadioButtonCarpeta))
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                .addComponent(jLabelFileName_Create)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jTextFieldFileName_Create, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                .addComponent(jLabelBlockSize)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jTextFieldBlockSize, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addGap(18, 18, 18)
-                .addComponent(jButtonCreateFileProcess)
-                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
-        );
-        jPanelOperateOperation.setBorder(javax.swing.BorderFactory.createTitledBorder("Operar Archivo (Leer/Mod/Del)"));
-        jLabelProcessType.setText("Tipo de Proceso:");
-        buttonGroupTipoProceso.add(jRadioButtonRead);
-        jRadioButtonRead.setSelected(true);
-        jRadioButtonRead.setText("Leer");
-        jRadioButtonRead.addActionListener(new java.awt.event.ActionListener() {
-            public void actionPerformed(java.awt.event.ActionEvent evt) {
-                jRadioButtonReadActionPerformed(evt);
-            }
-        });
-        buttonGroupTipoProceso.add(jRadioButtonModify);
-        jRadioButtonModify.setText("Modificar");
-        jRadioButtonModify.addActionListener(new java.awt.event.ActionListener() {
-            public void actionPerformed(java.awt.event.ActionEvent evt) {
-                jRadioButtonModifyActionPerformed(evt);
-            }
-        });
-        buttonGroupTipoProceso.add(jRadioButtonDelete);
-        jRadioButtonDelete.setText("Eliminar");
-        jRadioButtonDelete.addActionListener(new java.awt.event.ActionListener() {
-            public void actionPerformed(java.awt.event.ActionEvent evt) {
-                jRadioButtonDeleteActionPerformed(evt);
-            }
-        });
-        jLabelTargetFile.setText("Archivo Objetivo:");
-        jLabelFileName_Modify.setText("Nuevo Nombre (para Modificar):");
-        jButtonOperateFileProcess.setText("Crear Proceso (Operar)");
-        jButtonOperateFileProcess.addActionListener(new java.awt.event.ActionListener() {
-            public void actionPerformed(java.awt.event.ActionEvent evt) {
-                jButtonOperateFileProcessActionPerformed(evt);
-            }
-        });
-
-        javax.swing.GroupLayout jPanelOperateOperationLayout = new javax.swing.GroupLayout(jPanelOperateOperation);
-        jPanelOperateOperation.setLayout(jPanelOperateOperationLayout);
-        jPanelOperateOperationLayout.setHorizontalGroup(
-            jPanelOperateOperationLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(jPanelOperateOperationLayout.createSequentialGroup()
-                .addContainerGap()
-                .addGroup(jPanelOperateOperationLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                    .addComponent(jComboBoxTargetFile, 0, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                    .addComponent(jTextFieldFileName_Modify)
-                    .addComponent(jButtonOperateFileProcess, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.DEFAULT_SIZE, 236, Short.MAX_VALUE)
-                    .addGroup(jPanelOperateOperationLayout.createSequentialGroup()
-                        .addGroup(jPanelOperateOperationLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                            .addComponent(jLabelProcessType)
-                            .addGroup(jPanelOperateOperationLayout.createSequentialGroup()
-                                .addGap(6, 6, 6)
-                                .addGroup(jPanelOperateOperationLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                                    .addComponent(jRadioButtonModify)
-                                    .addComponent(jRadioButtonDelete)
-                                    .addComponent(jRadioButtonRead)))
-                            .addComponent(jLabelTargetFile)
-                            .addComponent(jLabelFileName_Modify))
-                        .addGap(0, 0, Short.MAX_VALUE)))
-                .addContainerGap())
-        );
-        jPanelOperateOperationLayout.setVerticalGroup(
-            jPanelOperateOperationLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(jPanelOperateOperationLayout.createSequentialGroup()
-                .addContainerGap()
-                .addComponent(jLabelProcessType)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jRadioButtonRead)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jRadioButtonModify)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jRadioButtonDelete)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                .addComponent(jLabelTargetFile)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jComboBoxTargetFile, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                .addComponent(jLabelFileName_Modify)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jTextFieldFileName_Modify, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 67, Short.MAX_VALUE)
-                .addComponent(jButtonOperateFileProcess)
-                .addContainerGap())
-        );
-
-        javax.swing.GroupLayout jPanelRightLayout = new javax.swing.GroupLayout(jPanelRight);
-        jPanelRight.setLayout(jPanelRightLayout);
-        jPanelRightLayout.setHorizontalGroup(
-            jPanelRightLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPanelRightLayout.createSequentialGroup()
-                .addContainerGap()
-                .addGroup(jPanelRightLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
-                    .addComponent(jPanelCreateOperation, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                    .addComponent(jPanelUser, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                    .addComponent(jPanelOperateOperation, javax.swing.GroupLayout.Alignment.LEADING, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
-                .addContainerGap())
-        );
-        jPanelRightLayout.setVerticalGroup(
-            jPanelRightLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(jPanelRightLayout.createSequentialGroup()
-                .addContainerGap()
-                .addComponent(jPanelUser, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                .addComponent(jPanelCreateOperation, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                .addComponent(jPanelOperateOperation, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                .addContainerGap())
-        );
-
-        javax.swing.GroupLayout layout = new javax.swing.GroupLayout(this);
-        this.setLayout(layout);
-        layout.setHorizontalGroup(
-            layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(layout.createSequentialGroup()
-                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                    .addGroup(layout.createSequentialGroup()
-                        .addGap(21, 21, 21)
-                        .addComponent(jScrollPaneTree, javax.swing.GroupLayout.PREFERRED_SIZE, 266, javax.swing.GroupLayout.PREFERRED_SIZE))
-                    .addGroup(layout.createSequentialGroup()
-                        .addGap(134, 134, 134)
-                        .addComponent(jLabel1)))
-                .addGap(18, 18, 18)
-                .addComponent(jTabbedPaneMiddle, javax.swing.GroupLayout.DEFAULT_SIZE, 484, Short.MAX_VALUE)
-                .addGap(18, 18, 18)
-                .addComponent(jPanelRight, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addContainerGap())
-        );
-        layout.setVerticalGroup(
-            layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, layout.createSequentialGroup()
-                .addGap(27, 27, 27)
-                .addComponent(jLabel1)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jScrollPaneTree)
-                .addGap(18, 18, 18))
-            .addComponent(jTabbedPaneMiddle)
-            .addComponent(jPanelRight, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-        );
-    }// </editor-fold>//GEN-END:initComponents
-
-    private void jButtonAddUserActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButtonAddUserActionPerformed
-        String newUser = jTextFieldNewUser.getText().trim();
-        if (!newUser.isEmpty()) {
-            jComboBoxCurrentUser.addItem(newUser);
-            jComboBoxCurrentUser.setSelectedItem(newUser);
-            jTextFieldNewUser.setText("");
         } else {
-            JOptionPane.showMessageDialog(this, "El nombre de usuario no puede estar vacío.", "Error", JOptionPane.ERROR_MESSAGE);
+            radioModify.setEnabled(true);
+            radioDelete.setEnabled(true);
+            comboPolicy.setEnabled(true);
         }
-    }//GEN-LAST:event_jButtonAddUserActionPerformed
-    private void jRadioButtonReadActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jRadioButtonReadActionPerformed
-        updateOperatePanelState();
-    }//GEN-LAST:event_jRadioButtonReadActionPerformed
-    private void jRadioButtonModifyActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jRadioButtonModifyActionPerformed
-        updateOperatePanelState();
-    }//GEN-LAST:event_jRadioButtonModifyActionPerformed
-    private void jRadioButtonDeleteActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jRadioButtonDeleteActionPerformed
-        updateOperatePanelState();
-    }//GEN-LAST:event_jRadioButtonDeleteActionPerformed
+        
+        txtNewName.setEnabled(isModify);
+        lblNewName.setEnabled(isModify);
+        btnCreateUser.setEnabled(isAdmin);
+    }
 
-    private void jButtonCreateFileProcessActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButtonCreateFileProcessActionPerformed
-        String processName = "P-" + new SimpleDateFormat("HHmmssSSS").format(new Date());    
-        String currentUser = (String) jComboBoxCurrentUser.getSelectedItem();
-        String fileName = jTextFieldFileName_Create.getText().trim();
-        DefaultMutableTreeNode location = (DefaultMutableTreeNode) jComboBoxLocation.getSelectedItem(); 
-        if (fileName.isEmpty() || location == null) {
-            JOptionPane.showMessageDialog(this, "Para 'Crear', complete Nombre y Ubicación.", "Error", JOptionPane.ERROR_MESSAGE);
+    private void setupModels() {
+        rootNode = new DefaultMutableTreeNode("Root");
+        treeModel = new DefaultTreeModel(rootNode);
+        jTree1.setModel(treeModel);
+
+        String[] diskCols = {"ID Bloque", "Estado", "Contenido"};
+        diskTableModel = new DefaultTableModel(diskCols, 0);
+        jTableDiskView.setModel(diskTableModel);
+        
+        jTableDiskView.setDefaultRenderer(Object.class, new DefaultTableCellRenderer() {
+            @Override
+            public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
+                Component c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+                String status = (String) table.getModel().getValueAt(row, 1);
+                c.setBackground("Ocupado".equals(status) ? new Color(255, 180, 180) : new Color(180, 255, 180));
+                return c;
+            }
+        });
+
+        String[] fileCols = {"Ubicación", "Nombre", "Tipo", "Dueño", "Tamaño", "Dir. Inicio"};
+        filesTableModel = new DefaultTableModel(fileCols, 0);
+        jTableFiles.setModel(filesTableModel);
+
+        updateTreeStructure();
+        updateCombos();
+    }
+
+    private void actionCreateUser() {
+        if (!currentUser.isAdmin()) {
+            JOptionPane.showMessageDialog(this, "Solo el administrador puede crear usuarios.");
             return;
         }
-        DefaultMutableTreeNode newNode = new DefaultMutableTreeNode(fileName);
-        if (jRadioButtonArchivo.isSelected()) {
-            String blockSizeStr = jTextFieldBlockSize.getText().trim();
-            if (blockSizeStr.isEmpty()) {
-                JOptionPane.showMessageDialog(this, "Para 'Archivo', especifique Tamaño en Bloques.", "Error", JOptionPane.ERROR_MESSAGE);
+        String name = txtNewUser.getText().trim();
+        if (name.isEmpty()) return;
+        
+        for (User u : userList) {
+            if (u.getName().equalsIgnoreCase(name)) {
+                JOptionPane.showMessageDialog(this, "Usuario ya existe.");
                 return;
             }
-            int blocks;
+        }
+        User newUser = new User(name, false);
+        userList.add(newUser);
+        comboUsers.addItem(name);
+        comboUsers.setSelectedItem(name);
+        txtNewUser.setText("");
+        logToMonitor("Usuario creado: " + name);
+        JOptionPane.showMessageDialog(this, "Usuario creado.");
+    }
+    
+    private void actionSelectUser() {
+        String selectedName = (String) comboUsers.getSelectedItem();
+        if (selectedName == null) return;
+        for (User u : userList) {
+            if (u.getName().equals(selectedName)) {
+                this.currentUser = u;
+                updateOperationsUI();
+                logToMonitor("Sesión: " + selectedName);
+                break;
+            }
+        }
+    }
+
+    private void actionCreate() {
+        String name = txtCreateName.getText().trim();
+        if (name.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Ingrese nombre.");
+            return;
+        }
+        
+        Folder parentFolder = getSelectedParentFolder();
+        
+        if (parentFolder.getContents().getValueOfKey(name) != null) {
+             JOptionPane.showMessageDialog(this, "Error: Nombre duplicado en " + parentFolder.getName());
+             return; 
+        }
+
+        DiskElement newElement;
+        if (radioFile.isSelected()) {
+            int size = (Integer) spinnerSize.getValue();
+            if (size > fileSystem.getDisk().getFreeSpace()) {
+                JOptionPane.showMessageDialog(this, "Error: Espacio insuficiente.");
+                return; 
+            }
+            newElement = new OS_Structures.File(name, currentUser, size, parentFolder);
+        } else {
+            newElement = new Folder(name, currentUser, parentFolder);
+        }
+
+        final DiskElement el = newElement;
+        final String fName = name;
+        final Folder pFolder = parentFolder;
+        
+        new Thread(() -> {
+            fileSystem.createProcess(el, CRUD.CREATE, currentUser, fName, pFolder);
+            logToMonitor("Solicitud CREAR enviada: " + fName);
+        }).start();
+    }
+    
+    private void actionCreateBatch10() {
+        if (!radioFile.isSelected()) {
+            JOptionPane.showMessageDialog(this, "Seleccione 'Archivo' para usar esta función.");
+            return;
+        }
+        
+        Folder parentFolder = getSelectedParentFolder();
+        int sizePerFile = (Integer) spinnerSize.getValue();
+        int totalNeeded = sizePerFile * 10;
+        
+        if (totalNeeded > fileSystem.getDisk().getFreeSpace()) {
+            JOptionPane.showMessageDialog(this, "Error: Espacio insuficiente para 10 archivos.");
+            return;
+        }
+        
+        new Thread(() -> {
+            long baseTime = System.currentTimeMillis() % 10000; 
+            for (int i = 1; i <= 10; i++) {
+                String batchName = "Batch_" + baseTime + "_" + i;
+                OS_Structures.File f = new OS_Structures.File(batchName, currentUser, sizePerFile, parentFolder);
+                fileSystem.createProcess(f, CRUD.CREATE, currentUser, batchName, parentFolder);
+                try { Thread.sleep(50); } catch (Exception e){}
+            }
+            logToMonitor("Lote de 10 archivos enviado.");
+        }).start();
+    }
+    
+    private Folder getSelectedParentFolder() {
+        String parentName = (String) comboLocation.getSelectedItem();
+        Folder parentFolder = fileSystem.getDisk().getRoot();
+        if (parentName != null && !parentName.equals("Root")) {
+             DiskElement found = findElementRecursive(fileSystem.getDisk().getRoot(), parentName);
+             if (found != null && !found.isFile()) parentFolder = (Folder) found;
+        }
+        return parentFolder;
+    }
+
+    private void actionOperate() {
+        String parentName = (String) comboOpLocation.getSelectedItem();
+        String targetName = (String) comboOpItem.getSelectedItem();
+        
+        if (parentName == null || targetName == null) {
+            JOptionPane.showMessageDialog(this, "Seleccione ubicación y elemento.");
+            return;
+        }
+        
+        Folder parentFolder = fileSystem.getDisk().getRoot();
+        if (!parentName.equals("Root")) {
+            DiskElement p = findElementRecursive(fileSystem.getDisk().getRoot(), parentName);
+            if (p instanceof Folder) parentFolder = (Folder) p;
+        }
+        
+        DiskElement target = parentFolder.getContents().getValueOfKey(targetName);
+        
+        if (target == null) {
+            JOptionPane.showMessageDialog(this, "Elemento no existe (refresque la vista).");
+            updateCombos(); 
+            return;
+        }
+        
+        if ((radioModify.isSelected() || radioDelete.isSelected()) && !currentUser.isAdmin()) {
+             JOptionPane.showMessageDialog(this, "Acceso Denegado: Solo administradores.");
+             return;
+        }
+
+        CRUD type = CRUD.READ;
+        if (radioModify.isSelected()) type = CRUD.UPDATE;
+        if (radioDelete.isSelected()) type = CRUD.DELETE;
+        
+        if (type == CRUD.READ) {
             try {
-                blocks = Integer.parseInt(blockSizeStr);
-            } catch (NumberFormatException e) {
-                JOptionPane.showMessageDialog(this, "El tamaño en bloques debe ser un número.", "Error", JOptionPane.ERROR_MESSAGE);
-                return;
+                StringBuilder sb = new StringBuilder();
+                sb.append("LECTURA SOLICITADA:\n");
+                sb.append("Nombre:   ").append(target.getName()).append("\n");
+                sb.append("Tipo:     ").append(target.isFile() ? "Archivo" : "Carpeta").append("\n");
+                
+                String ownerName = (target.getOwner() != null) ? target.getOwner().getName() : "Sistema";
+                sb.append("Dueño:    ").append(ownerName).append("\n");
+                
+                String parentFolderName = (target.getParent() != null) ? target.getParent().getName() : "Ninguno";
+                sb.append("Padre:    ").append(parentFolderName).append("\n");
+                
+                if (target.isFile()) {
+                    OS_Structures.File f = (OS_Structures.File) target;
+                    sb.append("Tamaño:   ").append(f.getSize()).append(" bloques\n");
+                    sb.append("Inicio:   Bloque ").append(f.getFileDir()).append("\n");
+                } else {
+                    Folder f = (Folder) target;
+                    int count = (f.getContents() != null) ? f.getContents().getSize() : 0;
+                    sb.append("Contiene: ").append(count).append(" elementos\n");
+                }
+                logToMonitor(sb.toString());
+            } catch (Exception e) {
+                logToMonitor("Error leyendo metadata.");
             }
-            System.out.println("--- Proceso CREAR ARCHIVO ---");
-            System.out.println("Proceso: " + processName + ", Usuario: " + currentUser);
-            System.out.println("Archivo: " + fileName + ", Tamaño: " + blocks + " bloques");
-            newNode.setAllowsChildren(false); 
-            treeModel.insertNodeInto(newNode, location, location.getChildCount());     
-            Object[] rowData = {fileName, blocks, "N/A", processName, currentUser};
-            addFileToTable(rowData);
-            updateTargetFileComboBox();    
-        } else if (jRadioButtonCarpeta.isSelected()) {
-            System.out.println("--- Proceso CREAR CARPETA ---");
-            System.out.println("Proceso: " + processName + ", Usuario: " + currentUser);
-            System.out.println("Carpeta: " + fileName);    
-            newNode.setAllowsChildren(true);
-            treeModel.insertNodeInto(newNode, location, location.getChildCount());
-            updateLocationComboBox();
-        }     
-        jTree1.expandPath(new javax.swing.tree.TreePath(location.getPath()));
-        jTextFieldFileName_Create.setText("");
-        jTextFieldBlockSize.setText("");
-    }//GEN-LAST:event_jButtonCreateFileProcessActionPerformed
+        } 
 
-    private void jButtonOperateFileProcessActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButtonOperateFileProcessActionPerformed
-        String processName = "P-" + new SimpleDateFormat("HHmmssSSS").format(new Date());        
-        String currentUser = (String) jComboBoxCurrentUser.getSelectedItem();
-        DefaultMutableTreeNode targetFileNode = (DefaultMutableTreeNode) jComboBoxTargetFile.getSelectedItem();
-        if (targetFileNode == null) {
-            JOptionPane.showMessageDialog(this, "Debe seleccionar un archivo objetivo.", "Error", JOptionPane.ERROR_MESSAGE);
-            return;
-        }    
-        String targetFileName = targetFileNode.getUserObject().toString();   
-        if (jRadioButtonRead.isSelected()) {
-            System.out.println("--- Proceso LEER ---");
-            System.out.println("Usuario: " + currentUser);
-            System.out.println("Proceso: " + processName);
-            System.out.println("Archivo: " + targetFileName);
-        } else if (jRadioButtonModify.isSelected()) {
-            String newName = jTextFieldFileName_Modify.getText().trim();
-            if (newName.isEmpty()) {
-                JOptionPane.showMessageDialog(this, "Para 'Modificar', escriba un nuevo nombre.", "Error", JOptionPane.ERROR_MESSAGE);
+        String tempNewName = null;
+        if (type == CRUD.UPDATE) {
+            tempNewName = txtNewName.getText().trim();
+            if (tempNewName.isEmpty()) {
+                JOptionPane.showMessageDialog(this, "Ingrese nuevo nombre.");
                 return;
             }
-            System.out.println("--- Proceso MODIFICAR ---");
-            System.out.println("Usuario: " + currentUser);
-            System.out.println("Proceso: " + processName);
-            System.out.println("Archivo: " + targetFileName + " -> " + newName);
-            targetFileNode.setUserObject(newName);
-            treeModel.nodeChanged(targetFileNode);
-            updateFileNameInTable(targetFileName, newName);       
-            updateTargetFileComboBox();
-        } else if (jRadioButtonDelete.isSelected()) {
-            System.out.println("--- Proceso ELIMINAR ---");
-            System.out.println("Usuario: " + currentUser);
-            System.out.println("Proceso: " + processName);
-            System.out.println("Archivo: " + targetFileName);
-            treeModel.removeNodeFromParent(targetFileNode);       
-            deleteFileNameFromTable(targetFileName);         
-            updateTargetFileComboBox();
+            if (parentFolder.getContents().getValueOfKey(tempNewName) != null) {
+                JOptionPane.showMessageDialog(this, "El nombre ya existe.");
+                return;
+            }
         }
-        jTextFieldFileName_Modify.setText("");
-    }//GEN-LAST:event_jButtonOperateFileProcessActionPerformed
+        
+        final String finalNewName = tempNewName;
+        final CRUD finalType = type;
+        final Folder finalParent = parentFolder;
+        
+        new Thread(() -> {
+            fileSystem.createProcess(target, finalType, currentUser, finalNewName, finalParent);
+            if (finalType != CRUD.READ) {
+                logToMonitor("Operación " + finalType + " enviada sobre " + target.getName());
+            }
+        }).start();
+    }
 
+    private void startRefresher() {
+        refreshTimer = new Timer(1000, new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                updateDiskTable();
+                lblFreeSpace.setText(fileSystem.getDisk().getFreeSpace() + " Bloques");
+                updateTreeStructure(); 
+                updateCombos(); 
+            }
+        });
+        refreshTimer.start();
+    }
+    
+    private void updateOpTargetItems() {
+        comboOpItem.removeAllItems();
+        String locationName = (String) comboOpLocation.getSelectedItem();
+        if (locationName == null) return;
+        
+        Folder location = fileSystem.getDisk().getRoot();
+        if (!locationName.equals("Root")) {
+             DiskElement found = findElementRecursive(fileSystem.getDisk().getRoot(), locationName);
+             if (found instanceof Folder) location = (Folder) found;
+             else return;
+        }
+        
+        boolean wantFiles = radioOpTargetFile.isSelected();
+        List<DiskElement> contents = location.getContents().getValues();
+        if (contents == null) return;
+        
+        for (DiskElement de : contents) {
+            if (wantFiles && de.isFile()) {
+                comboOpItem.addItem(de.getName());
+            } else if (!wantFiles && !de.isFile()) {
+                comboOpItem.addItem(de.getName());
+            }
+        }
+    }
 
-    // Variables declaration - do not modify//GEN-BEGIN:variables
-    private javax.swing.ButtonGroup buttonGroupCreateType;
-    private javax.swing.ButtonGroup buttonGroupTipoProceso;
-    private javax.swing.JButton jButtonAddUser;
-    private javax.swing.JButton jButtonCreateFileProcess;
-    private javax.swing.JButton jButtonOperateFileProcess;
-    private javax.swing.JComboBox<String> jComboBoxCurrentUser;
-    private javax.swing.JComboBox<DefaultMutableTreeNode> jComboBoxLocation;
-    private javax.swing.JComboBox<DefaultMutableTreeNode> jComboBoxTargetFile;
-    private javax.swing.JLabel jLabel1;
-    private javax.swing.JLabel jLabelBlockSize;
-    private javax.swing.JLabel jLabelBlocked;
-    private javax.swing.JLabel jLabelCurrentIO;
-    private javax.swing.JLabel jLabelCurrentUser;
-    private javax.swing.JLabel jLabelFileName_Create;
-    private javax.swing.JLabel jLabelFileName_Modify;
-    private javax.swing.JLabel jLabelFinished;
-    private javax.swing.JLabel jLabelLocation;
-    private javax.swing.JLabel jLabelNew;
-    private javax.swing.JLabel jLabelNewUser;
-    private javax.swing.JLabel jLabelProcessType;
-    private javax.swing.JLabel jLabelReady;
-    private javax.swing.JLabel jLabelRunning;
-    private javax.swing.JLabel jLabelTargetFile;
-    private javax.swing.JPanel jPanelBuffer;
-    private javax.swing.JPanel jPanelCreateOperation;
-    private javax.swing.JPanel jPanelDiskView;
-    private javax.swing.JPanel jPanelFileTable;
-    private javax.swing.JPanel jPanelOperateOperation;
-    private javax.swing.JPanel jPanelQueues;
-    private javax.swing.JPanel jPanelRight;
-    private javax.swing.JPanel jPanelUser;
-    private javax.swing.JRadioButton jRadioButtonArchivo;
-    private javax.swing.JRadioButton jRadioButtonCarpeta;
-    private javax.swing.JRadioButton jRadioButtonDelete;
-    private javax.swing.JRadioButton jRadioButtonModify;
-    private javax.swing.JRadioButton jRadioButtonRead;
-    private javax.swing.JScrollPane jScrollPaneBuffer;
-    private javax.swing.JScrollPane jScrollPaneBlocked;
-    private javax.swing.JScrollPane jScrollPaneDisk;
-    private javax.swing.JScrollPane jScrollPaneFiles;
-    private javax.swing.JScrollPane jScrollPaneFinished;
-    private javax.swing.JScrollPane jScrollPaneNew;
-    private javax.swing.JScrollPane jScrollPaneReady;
-    private javax.swing.JScrollPane jScrollPaneRunning;
-    private javax.swing.JScrollPane jScrollPaneTree;
-    private javax.swing.JTabbedPane jTabbedPaneMiddle;
-    private javax.swing.JTable jTableBuffer;
-    private javax.swing.JTable jTableDiskView;
-    private javax.swing.JTable jTableFiles;
-    private javax.swing.JTextArea jTextAreaBlocked;
-    private javax.swing.JTextArea jTextAreaFinished;
-    private javax.swing.JTextArea jTextAreaNew;
-    private javax.swing.JTextArea jTextAreaReady;
-    private javax.swing.JTextArea jTextAreaRunning;
-    private javax.swing.JTextField jTextFieldBlockSize;
-    private javax.swing.JTextField jTextFieldCurrentIO;
-    private javax.swing.JTextField jTextFieldFileName_Create;
-    private javax.swing.JTextField jTextFieldFileName_Modify;
-    private javax.swing.JTextField jTextFieldNewUser;
-    private javax.swing.JTree jTree1;
-    // End of variables declaration//GEN-END:variables
+    private void updateTreeStructure() {
+        Folder rootLogic = fileSystem.getDisk().getRoot();
+        rootNode.removeAllChildren(); 
+        buildTree(rootLogic, rootNode);
+        treeModel.reload(); 
+        for (int i = 0; i < jTree1.getRowCount(); i++) jTree1.expandRow(i);
+        updateFileTable(rootLogic);
+    }
+
+    private void buildTree(Folder folder, DefaultMutableTreeNode visualNode) {
+        if (folder == null) return;
+        List<DiskElement> content = folder.getContents().getValues();
+        if (content == null) return; 
+        for (DiskElement de : content) {
+            DefaultMutableTreeNode childNode = new DefaultMutableTreeNode(de.getName());
+            visualNode.add(childNode);
+            if (!de.isFile()) buildTree((Folder) de, childNode);
+        }
+    }
+
+    private void updateDiskTable() {
+        Block[] memory = fileSystem.getDisk().getMemory();
+        if (diskTableModel.getRowCount() != memory.length) {
+            diskTableModel.setRowCount(0);
+            for (Block b : memory) diskTableModel.addRow(new Object[]{b.getBlockDir(), b.isFree() ? "Libre" : "Ocupado", "-"});
+        } else {
+            for (int i=0; i<memory.length; i++) {
+                String status = memory[i].isFree() ? "Libre" : "Ocupado";
+                if (!status.equals(diskTableModel.getValueAt(i, 1))) diskTableModel.setValueAt(status, i, 1);
+            }
+        }
+    }
+    
+    private void updateFileTable(Folder root) {
+        filesTableModel.setRowCount(0);
+        java.util.List<DiskElement> allFiles = new ArrayList<>();
+        collectAllElements(root, allFiles);
+        for (DiskElement de : allFiles) {
+             String tipo = de.isFile() ? "Archivo" : "Carpeta";
+             String size = de.isFile() ? String.valueOf(((OS_Structures.File)de).getSize()) : "-";
+             String ownerName = (de.getOwner() != null) ? de.getOwner().getName() : "Sys";
+             String parentName = (de.getParent() != null) ? de.getParent().getName() : "Root";
+             String startDir = "-";
+             if (de.isFile()) startDir = String.valueOf(((OS_Structures.File)de).getFileDir());
+             
+             filesTableModel.addRow(new Object[]{parentName, de.getName(), tipo, ownerName, size, startDir});
+        }
+    }
+    
+    private void collectAllElements(Folder current, java.util.List<DiskElement> accumulator) {
+        if (current == null) return;
+        List<DiskElement> contents = current.getContents().getValues();
+        if (contents == null) return;
+        for (DiskElement de : contents) {
+            accumulator.add(de); 
+            if (!de.isFile()) collectAllElements((Folder) de, accumulator); 
+        }
+    }
+    
+    private void updateCombos() {
+        Object selLoc = comboLocation.getSelectedItem();
+        Object selOpLoc = comboOpLocation.getSelectedItem();
+        comboLocation.removeAllItems();
+        comboOpLocation.removeAllItems();
+        comboLocation.addItem("Root");
+        comboOpLocation.addItem("Root");
+        
+        fillCombosRecursive(fileSystem.getDisk().getRoot());
+        
+        if (selLoc != null) try { comboLocation.setSelectedItem(selLoc); } catch(Exception e){}
+        
+        boolean restoredOpLoc = false;
+        if (selOpLoc != null) {
+            try { 
+                comboOpLocation.setSelectedItem(selOpLoc); 
+                restoredOpLoc = true;
+            } catch(Exception e){}
+        }
+        
+        if (restoredOpLoc || comboOpItem.getItemCount() == 0) {
+            updateOpTargetItems();
+        }
+    }
+    
+    private void fillCombosRecursive(Folder current) {
+        if (current == null) return;
+        List<DiskElement> list = current.getContents().getValues();
+        if (list == null) return;
+
+        for (DiskElement de : list) {
+            if (!de.isFile()) {
+                comboLocation.addItem(de.getName());
+                comboOpLocation.addItem(de.getName());
+                fillCombosRecursive((Folder) de);
+            }
+        }
+    }
+
+    private DiskElement findElementRecursive(Folder current, String name) {
+        if (current.getName().equals(name)) return current;
+        List<DiskElement> list = current.getContents().getValues();
+        if (list == null) return null;
+        for (DiskElement de : list) {
+            if (de.getName().equals(name)) return de;
+            if (!de.isFile()) {
+                DiskElement found = findElementRecursive((Folder)de, name);
+                if (found != null) return found;
+            }
+        }
+        return null;
+    }
 }
